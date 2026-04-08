@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flow | Swing & Stack Arena</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
+        
+        /* Avatar Styling */
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1e293b;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+        .active-turn .player-avatar {
+            border: 3px solid #3b82f6;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+        }
+        .inactive-turn { opacity: 0.5; filter: grayscale(50%); transition: all 0.3s; }
+
+        /* Canvas Game Area */
+        #game-container {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+            overflow: hidden;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+
+        /* Overlays & Chat */
+        .glass-panel { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); }
+        .swal2-popup { border-radius: 1.5rem !important; font-family: 'Inter', sans-serif !important; }
+        
+        #marquee-container {
+            position: fixed; top: 130px; width: 100%; pointer-events: none;
+            overflow: hidden; white-space: nowrap; z-index: 50;
+        }
+        .marquee-text {
+            display: inline-block; animation: marquee 8s linear forwards;
+            font-weight: 800; font-size: 1.2rem; color: #60a5fa; text-shadow: 0 0 10px rgba(59,130,246,0.5);
+        }
+        @keyframes marquee {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen p-4">
+
+    <div id="rules-overlay" class="fixed inset-0 z-[100] glass-panel flex flex-col items-center justify-center p-6 transition-opacity duration-500">
+        <i class="fa-solid fa-gift text-5xl text-blue-500 animate-bounce mb-4"></i>
+        <h1 class="text-3xl font-black text-white tracking-widest uppercase mb-4 text-center">Swing & Stack</h1>
+        <div class="bg-slate-800/80 border border-white/10 p-6 rounded-3xl w-full max-w-xs shadow-2xl">
+            <ul class="text-sm space-y-4 font-bold text-slate-200">
+                <li class="flex items-center gap-3"><i class="fa-solid fa-hand-pointer text-yellow-400 text-lg w-6"></i> Tap to cut the string.</li>
+                <li class="flex items-center gap-3"><i class="fa-solid fa-bullseye text-green-400 text-lg w-6"></i> Land the gift on the tower.</li>
+                <li class="flex items-center gap-3"><i class="fa-solid fa-skull text-red-500 text-lg w-6"></i> If it falls off, you lose!</li>
+            </ul>
+        </div>
+        <p id="rules-countdown" class="mt-8 text-2xl font-black text-blue-500 tracking-widest uppercase">Waiting for opponent...</p>
+    </div>
+
+    <div class="flex justify-between items-end bg-slate-900/50 p-4 rounded-3xl border border-white/5 relative z-10 shrink-0">
+        <div id="host-section" class="flex flex-col items-center gap-1 transition-all active-turn">
+            <img id="host-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="host-name" class="text-[10px] font-bold text-blue-400 uppercase w-20 text-center truncate">Host</p>
+        </div>
+        
+        <div class="text-center pb-2">
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tower Height</p>
+            <h2 id="stack-height" class="text-4xl font-black text-white leading-none mt-1">0</h2>
+            <div class="bg-yellow-500/10 px-3 py-1 rounded-full border border-yellow-500/20 mt-2">
+                <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Pot: <span id="display-pot">0</span></p>
+            </div>
+        </div>
+        
+        <div id="guest-section" class="flex flex-col items-center gap-1 transition-all inactive-turn">
+            <img id="guest-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="guest-name" class="text-[10px] font-bold text-slate-400 uppercase w-20 text-center truncate">Guest</p>
+        </div>
+    </div>
+
+    <div id="marquee-container"></div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="status-text" class="text-center text-sm font-bold text-slate-400 animate-pulse tracking-widest uppercase my-2 shrink-0">Connecting...</div>
+
+    <div class="flex items-center gap-2 shrink-0 mb-2 relative z-10">
+        <div id="chat-input-container" class="hidden flex-1">
+            <input type="text" id="chat-input" placeholder="Trash talk here..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+        </div>
+        <button onclick="toggleChat()" class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center border border-white/10 hover:bg-slate-700 transition ml-auto shadow-lg">
+            <i class="fa-solid fa-comment"></i>
+        </button>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // --- MATCH & NETWORK STATE ---
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'swing_test_match';
+        const wager = parseInt(params.get('wager')) || 100;
+        const hostId = params.get('host');
+        const guestId = params.get('guest');
+        
+        let currentUser = null;
+        let myRole = ""; 
+        let currentTurn = 'host';
+        let gameActive = false;
+        let gameChannel;
+
+        // --- GAME PHYSICS STATE ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const GRAVITY = 12; // Fall speed
+        
+        let stack = [];
+        let dropping = false;
+        
+        // Pendulum variables
+        let anchorX, anchorY;
+        let stringLength = 150;
+        const maxAngle = Math.PI / 2.5; // ~70 degrees swing
+        let swingSpeed = 600; // ms per oscillation factor (lower is faster)
+        let baseSyncTime = 0; // Ensures both players see roughly the same swing
+
+        let currentBox = { x: 0, y: 0, w: 90, h: 35, baseColor: '#ef4444', pattern: 'solid', ribbonColor: '#fff', playerColor: '#3b82f6' };
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            
+            if (!session) {
+                const localUid = localStorage.getItem('flow_temp_uid') || 'u_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('flow_temp_uid', localUid);
+                currentUser = { id: localUid };
+            } else {
+                currentUser = session.user;
+            }
+
+            const cleanHostId = hostId ? hostId.trim() : null;
+            myRole = (currentUser.id === cleanHostId) ? 'host' : 'guest';
+            
+            document.getElementById('display-pot').innerText = (wager * 2).toLocaleString();
+            
+            await fetchPlayerProfiles();
+            resizeCanvas();
+            initStack();
+            setupRealtime();
+            updateTurnUI();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        async function fetchPlayerProfiles() {
+            const getFallback = (name) => `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff&bold=true`;
+
+            if(hostId) {
+                const { data: hostData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', hostId).single();
+                const hostMeta = hostData?.raw_user_meta_data || { username: 'Host' };
+                document.getElementById('host-name').innerText = hostMeta.username || 'Host';
+                document.getElementById('host-pfp').src = hostMeta.avatar_url || getFallback(hostMeta.username || 'H');
+            }
+
+            if(guestId) {
+                const { data: guestData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', guestId).single();
+                const guestMeta = guestData?.raw_user_meta_data || { username: 'Guest' };
+                document.getElementById('guest-name').innerText = guestMeta.username || 'Waiting...';
+                document.getElementById('guest-pfp').src = guestMeta.avatar_url || getFallback(guestMeta.username || 'G');
+            }
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+            anchorX = canvas.width / 2;
+            anchorY = -20; // Anchor slightly above screen
+        }
+
+        // --- GIFT BOX GENERATOR ---
+        // Generates deterministic dimensions and patterns based on the round number to keep host and guest in perfect visual sync
+        function getGiftBoxProps(index) {
+            const shapes = [
+                { w: 90, h: 35 },
+                { w: 80, h: 40 },
+                { w: 100, h: 30 },
+                { w: 75, h: 45 },
+                { w: 85, h: 38 }
+            ];
+            const patterns = ['solid', 'dots', 'lines', 'plaid'];
+            const colors = ['#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'];
+            const ribbons = ['#ffffff', '#fbbf24', '#22d3ee', '#f87171', '#a7f3d0'];
+
+            return {
+                w: shapes[index % shapes.length].w,
+                h: shapes[index % shapes.length].h,
+                pattern: patterns[index % patterns.length],
+                baseColor: colors[index % colors.length],
+                ribbonColor: ribbons[(index + 2) % ribbons.length]
+            };
+        }
+
+        function initStack() {
+            swingSpeed = 600; // Reset speed
+            stack = [{
+                x: canvas.width / 2 - 70,
+                y: canvas.height - 60,
+                w: 140,
+                h: 60,
+                baseColor: '#475569',
+                pattern: 'solid',
+                ribbonColor: '#334155'
+            }];
+            resetBox();
+        }
+
+        function resetBox() {
+            dropping = false;
+            baseSyncTime = Date.now(); // Sync the pendulum math
+            
+            const props = getGiftBoxProps(stack.length);
+            currentBox.w = props.w;
+            currentBox.h = props.h;
+            currentBox.pattern = props.pattern;
+            currentBox.baseColor = props.baseColor;
+            currentBox.ribbonColor = props.ribbonColor;
+            currentBox.playerColor = currentTurn === 'host' ? '#3b82f6' : '#ef4444'; 
+        }
+
+        // --- REALTIME ---
+        function setupRealtime() {
+            gameChannel = flowClient.channel(matchId, { config: { presence: { key: currentUser.id } } });
+
+            gameChannel
+                .on('presence', { event: 'sync' }, () => {
+                    const players = Object.keys(gameChannel.presenceState());
+                    if (myRole === 'host' && players.length >= 2 && !gameActive && document.getElementById('rules-overlay').style.display !== 'none') {
+                        gameChannel.send({type:'broadcast', event:'start_countdown'});
+                        beginMatchSequence();
+                    }
+                })
+                .on('broadcast', { event: 'start_countdown' }, () => {
+                    if (myRole !== 'host') beginMatchSequence();
+                })
+                .on('broadcast', { event: 'drop' }, ({payload}) => {
+                    if (payload.uid !== currentUser.id) {
+                        // Force the exact drop position to prevent desync
+                        currentBox.x = payload.x;
+                        currentBox.y = payload.y;
+                        executeDrop();
+                    }
+                })
+                .on('broadcast', { event: 'game_over' }, ({payload}) => {
+                    handleGameOver(payload.loserRole);
+                })
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    showMarquee(`${payload.sender}: ${payload.msg}`);
+                })
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await gameChannel.track({ online_at: new Date().toISOString() });
+                    }
+                });
+        }
+
+        function beginMatchSequence() {
+            let count = 3;
+            const counterEl = document.getElementById('rules-countdown');
+            counterEl.classList.replace('text-2xl', 'text-6xl');
+            counterEl.innerText = count;
+            
+            const interval = setInterval(() => {
+                count--;
+                if(count > 0) {
+                    counterEl.innerText = count;
+                } else {
+                    clearInterval(interval);
+                    document.getElementById('rules-overlay').style.opacity = '0';
+                    setTimeout(() => {
+                        document.getElementById('rules-overlay').style.display = 'none';
+                        gameActive = true;
+                        currentTurn = 'host';
+                        updateTurnUI();
+                        resetBox();
+                    }, 500);
+                }
+            }, 1000);
+        }
+
+        function updateTurnUI() {
+            const hostSec = document.getElementById('host-section');
+            const guestSec = document.getElementById('guest-section');
+            const status = document.getElementById('status-text');
+
+            if (currentTurn === 'host') {
+                hostSec.classList.add('active-turn'); hostSec.classList.remove('inactive-turn');
+                guestSec.classList.remove('active-turn'); guestSec.classList.add('inactive-turn');
+            } else {
+                guestSec.classList.add('active-turn'); guestSec.classList.remove('inactive-turn');
+                hostSec.classList.remove('active-turn'); hostSec.classList.add('inactive-turn');
+            }
+
+            if (!gameActive) return;
+
+            if (myRole === currentTurn) {
+                status.innerText = "YOUR TURN - TAP TO DROP";
+                status.classList.remove('text-slate-500');
+                status.classList.add('text-green-400');
+            } else {
+                const waitingFor = currentTurn === 'host' ? 'Host' : 'Guest';
+                status.innerText = `WAITING FOR ${waitingFor.toUpperCase()}...`;
+                status.classList.remove('text-green-400');
+                status.classList.add('text-slate-500');
+            }
+        }
+
+        // --- INPUT & LOGIC ---
+        document.getElementById('game-container').addEventListener('pointerdown', (e) => {
+            if (!gameActive || myRole !== currentTurn || dropping) return;
+            
+            // Broadcast exact coordinates so opponent sees the exact same trajectory
+            gameChannel.send({
+                type: 'broadcast', 
+                event: 'drop', 
+                payload: { uid: currentUser.id, x: currentBox.x, y: currentBox.y }
+            });
+
+            executeDrop();
+        });
+
+        function executeDrop() {
+            dropping = true;
+        }
+
+        function evaluatePlacement() {
+            let topBox = stack[stack.length - 1];
+            let boxCenter = currentBox.x + (currentBox.w / 2);
+            
+            // 3 pixel forgiveness margin
+            let safeLeft = topBox.x - 3;
+            let safeRight = topBox.x + topBox.w + 3;
+
+            return (boxCenter >= safeLeft && boxCenter <= safeRight);
+        }
+
+        function shiftCamera(shiftAmt) {
+            // Shifts the entire tower down by the exact height of the newly placed box
+            // This guarantees the top of the tower NEVER gets closer to the string
+            stack.forEach(b => b.y += shiftAmt);
+        }
+
+        // --- RENDERING & PHYSICS ---
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameActive) {
+                if (!dropping) {
+                    // Pendulum Swing Logic
+                    let elapsed = Date.now() - baseSyncTime;
+                    let angle = Math.sin(elapsed / swingSpeed) * maxAngle;
+                    
+                    // Box center attached to string
+                    let attachX = anchorX + stringLength * Math.sin(angle);
+                    let attachY = anchorY + stringLength * Math.cos(angle);
+                    
+                    currentBox.x = attachX - (currentBox.w / 2);
+                    currentBox.y = attachY;
+
+                    // Draw String
+                    ctx.beginPath();
+                    ctx.moveTo(anchorX, anchorY);
+                    ctx.lineTo(attachX, attachY);
+                    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    // Dropping Logic
+                    currentBox.y += GRAVITY;
+                    let topBox = stack[stack.length - 1];
+
+                    // Collision Check
+                    if (currentBox.y + currentBox.h >= topBox.y) {
+                        currentBox.y = topBox.y - currentBox.h;
+                        
+                        if (evaluatePlacement()) {
+                            // Success
+                            stack.push({
+                                x: currentBox.x, y: currentBox.y,
+                                w: currentBox.w, h: currentBox.h,
+                                baseColor: currentBox.baseColor,
+                                pattern: currentBox.pattern,
+                                ribbonColor: currentBox.ribbonColor
+                            });
+                            
+                            const score = stack.length - 1;
+                            document.getElementById('stack-height').innerText = score;
+                            
+                            // 1. Ensure the distance between string and tower remains perfectly constant
+                            shiftCamera(currentBox.h);
+
+                            // 2. Increase speed slightly every 2 rounds
+                            if (score % 2 === 0) {
+                                // Lower swingSpeed means faster oscillation. Cap at 250ms
+                                swingSpeed = Math.max(250, swingSpeed * 0.90); 
+                            }
+
+                            currentTurn = currentTurn === 'host' ? 'guest' : 'host';
+                            updateTurnUI();
+                            resetBox();
+                        } else {
+                            // Fail
+                            currentBox.y += GRAVITY * 2; // Let it fall past
+                            if (myRole === currentTurn) {
+                                triggerGameOverLocal();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Draw Stack
+            stack.forEach(b => drawGiftBox(b, false));
+
+            // Draw Active Box
+            if (gameActive || dropping) {
+                drawGiftBox(currentBox, true);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawGiftBox(b, isCurrent) {
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(b.x + 4, b.y + 4, b.w, b.h);
+
+            // Base Color
+            ctx.fillStyle = b.baseColor;
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+
+            // Patterns
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(b.x, b.y, b.w, b.h);
+            ctx.clip();
+
+            if (b.pattern === 'dots') {
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                for (let dx = 6; dx < b.w; dx += 14) {
+                    for (let dy = 6; dy < b.h; dy += 14) {
+                        ctx.beginPath();
+                        ctx.arc(b.x + dx, b.y + dy, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            } else if (b.pattern === 'lines') {
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                ctx.lineWidth = 2;
+                for (let dx = -b.h; dx < b.w + b.h; dx += 12) {
+                    ctx.beginPath();
+                    ctx.moveTo(b.x + dx, b.y);
+                    ctx.lineTo(b.x + dx + b.h, b.y + b.h);
+                    ctx.stroke();
+                }
+            } else if (b.pattern === 'plaid') {
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                for (let dx = 0; dx < b.w; dx += 16) {
+                    ctx.fillRect(b.x + dx, b.y, 6, b.h);
+                }
+                for (let dy = 0; dy < b.h; dy += 16) {
+                    ctx.fillRect(b.x, b.y + dy, b.w, 6);
+                }
+            }
+            ctx.restore();
+
+            // Ribbon Wrap & Bow
+            if (b.ribbonColor) {
+                ctx.fillStyle = b.ribbonColor;
+                // Vertical strip
+                ctx.fillRect(b.x + b.w / 2 - 4, b.y, 8, b.h);
+                // Horizontal strip
+                ctx.fillRect(b.x, b.y + b.h / 2 - 4, b.w, 8);
+                
+                // Bow (drawn only on the top edge)
+                ctx.beginPath();
+                ctx.arc(b.x + b.w / 2 - 5, b.y, 5, 0, Math.PI * 2);
+                ctx.arc(b.x + b.w / 2 + 5, b.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Glow indicator for the active turn
+            if (isCurrent && !dropping) {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = b.playerColor;
+                ctx.strokeStyle = b.playerColor;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(b.x, b.y, b.w, b.h);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // --- ENDGAME ---
+        function triggerGameOverLocal() {
+            gameActive = false;
+            gameChannel.send({
+                type: 'broadcast',
+                event: 'game_over',
+                payload: { loserRole: currentTurn }
+            });
+            handleGameOver(currentTurn);
+        }
+
+        async function handleGameOver(loserRole) {
+            gameActive = false;
+            let iWon = (myRole !== loserRole);
+            const score = stack.length - 1;
+
+            if(iWon) {
+                const totalPot = wager * 2;
+                const winnings = Math.floor(totalPot * 0.9);
+                
+                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#fbbf24', '#3b82f6', '#ffffff'] });
+
+                if(currentUser.id && !currentUser.id.startsWith('u_')) {
+                    try {
+                        const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                        if (data) {
+                            await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
+                        }
+                    } catch(e) { console.error("Update failed", e); }
+                }
+
+                Swal.fire({ 
+                    title: "VICTORY! 🎉", 
+                    text: `Opponent missed! You won ${winnings} coins! Tower Height: ${score}`, 
+                    icon: "success", 
+                    background: '#0f172a', color: '#fff', confirmButtonColor: '#3b82f6', confirmButtonText: 'Lobby' 
+                }).then(() => window.location.replace('index.html'));
+
+            } else {
+                Swal.fire({ 
+                    title: "DEFEAT 💀", 
+                    text: `You dropped the gift! Better luck next time. Tower Height: ${score}`, 
+                    icon: "error", 
+                    background: '#0f172a', color: '#fff', confirmButtonColor: '#ef4444', confirmButtonText: 'Lobby' 
+                }).then(() => window.location.replace('index.html'));
+            }
+        }
+
+        // --- CHAT SYSTEM ---
+        function toggleChat() {
+            const container = document.getElementById('chat-input-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value.trim();
+                if (!msg) return;
+                
+                const senderName = document.getElementById(`${myRole}-name`).innerText;
+                window.gameChannel.send({ type: 'broadcast', event: 'chat', payload: { msg, sender: senderName } });
+                showMarquee(`You: ${msg}`);
+                e.target.value = "";
+                toggleChat();
+            }
+        });
+
+        function showMarquee(text) {
+            const container = document.getElementById('marquee-container');
+            const el = document.createElement('div');
+            el.className = 'marquee-text';
+            el.innerText = text;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 8000);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

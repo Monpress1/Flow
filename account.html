@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Account</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; padding-bottom: 100px; overflow-x: hidden; }
+
+        /* --- Smoother 3D Water Ripple --- */
+        #preloader { 
+            position: fixed; inset: 0; background: #020617; z-index: 9999; 
+            display: flex; align-items: center; justify-content: center; 
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1); perspective: 1000px; 
+        }
+        .droplet { 
+            width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; 
+            position: absolute; top: -20px; 
+            animation: dropIn 0.6s cubic-bezier(0.5, 0, 1, 1) forwards; 
+        }
+        .ripple-ring { 
+            position: absolute; border-radius: 50%; 
+            border: 2px solid rgba(59, 130, 246, 0.5); 
+            opacity: 0; transform: rotateX(70deg); 
+        }
+        .ripple-1 { animation: rippleFluid 2s ease-out 0.6s infinite; }
+        
+        @keyframes dropIn { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(50vh); opacity: 0; } }
+        @keyframes rippleFluid { 
+            0% { width: 0; height: 0; opacity: 1; border-width: 4px; } 
+            100% { width: 500px; height: 500px; opacity: 0; border-width: 1px; } 
+        }
+
+        .glass-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1.5rem; }
+        .badge-overlay { position: absolute; bottom: -5px; right: -5px; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 3px solid #020617; font-weight: bold; }
+        .lvl-1 { background: #cd7f32; }
+        .lvl-2 { background: #e2e8f0; color: #1e293b; box-shadow: 0 0 15px rgba(255,255,255,0.2); }
+        .lvl-3 { background: #fbbf24; animation: pulsePurple 2s infinite; }
+        
+        @keyframes pulsePurple { 0%, 100% { box-shadow: 0 0 15px #a855f7; } 50% { box-shadow: 0 0 25px #d946ef; } }
+        .nav-dock { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.08); }
+        .center-game-btn { background: linear-gradient(135deg, #06b6d4, #3b82f6); transform: translateY(-25px); box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4); }
+
+        /* --- Challenge Popup --- */
+        .challenge-alert {
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            position: fixed; top: 0; left: 50%; z-index: 10000; width: 92%;
+            transform: translate(-50%, -150%); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-radius: 1.5rem;
+        }
+        .challenge-alert.active { transform: translate(-50%, 20px); }
+    </style>
+</head>
+<body class="max-w-md mx-auto">
+
+    <div id="preloader">
+        <div class="droplet"></div>
+        <div class="ripple-ring ripple-1"></div>
+    </div>
+
+    <div id="global-challenge-popup" class="challenge-alert p-4 shadow-2xl">
+        <div class="flex items-center gap-4">
+            <img id="popup-challenger-img" src="" class="w-14 h-14 rounded-full border-2 border-blue-500 object-cover bg-slate-800">
+            <div class="flex-1">
+                <h3 class="font-bold text-white text-sm leading-tight">
+                    <span id="popup-challenger-name" class="text-blue-400">Player</span> challenged you to <span id="popup-game-name" class="text-yellow-400">Battle</span>
+                </h3>
+                <p class="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Accept in 10s</p>
+            </div>
+            <div class="flex flex-col gap-2">
+                <button id="btn-accept-challenge" class="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center active:scale-90 transition">
+                    <i class="fa-solid fa-check"></i>
+                </button>
+                <button id="btn-decline-challenge" class="w-10 h-10 rounded-full bg-red-500/20 text-red-500 border border-red-500/30 flex items-center justify-center active:scale-90 transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+        <div class="w-full h-1 bg-slate-900 mt-4 rounded-full overflow-hidden">
+            <div id="popup-timer-bar" class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 w-full"></div>
+        </div>
+    </div>
+
+    <header class="p-5 flex justify-between items-center sticky top-0 bg-[#020617]/90 backdrop-blur-md z-40">
+        <div class="flex items-center gap-3">
+            <img src="logo.png" alt="Logo" class="h-10">
+            <div>
+                <p class="text-[10px] text-slate-400 uppercase tracking-wider">Account Settings</p>
+                <h2 id="user-greeting" class="font-bold text-sm leading-none">Player</h2>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-full border border-slate-700">
+            <i class="fa-solid fa-coins text-yellow-400 text-xs"></i>
+            <span id="balance" class="font-bold text-sm">0.00</span>
+        </div>
+    </header>
+
+    <main class="px-5 pt-4">
+        <div class="flex flex-col items-center mb-8">
+            <div class="relative w-24 h-24 mb-3">
+                <div class="w-full h-full rounded-full p-1 bg-gradient-to-tr from-blue-500 to-purple-500">
+                    <div id="avatar-placeholder" class="w-full h-full rounded-full bg-slate-800 flex items-center justify-center border-2 border-[#020617]">
+                        <i class="fa-solid fa-user text-3xl text-slate-500"></i>
+                    </div>
+                    <img id="avatar-img" class="hidden w-full h-full rounded-full object-cover border-2 border-[#020617]">
+                </div>
+                <div id="level-badge" class="badge-overlay lvl-1">1</div>
+            </div>
+            <h3 id="username-display" class="text-xl font-black">Username</h3>
+            <p id="level-text" class="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Level 1 Rookie</p>
+        </div>
+
+        <div class="space-y-3">
+            <button onclick="toggleModal('profile-modal', true)" class="glass-card w-full p-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400"><i class="fa-solid fa-user-pen"></i></div>
+                    <span class="font-bold text-sm">Edit Profile</span>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-600"></i>
+            </button>
+
+            <a href="activity.html" class="glass-card w-full p-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                    <span class="font-bold text-sm">Game History</span>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-600"></i>
+            </a>
+
+            <button onclick="handleLogout()" class="glass-card w-full p-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-slate-500/10 flex items-center justify-center text-slate-400"><i class="fa-solid fa-right-from-bracket"></i></div>
+                    <span class="font-bold text-sm text-slate-400">Logout</span>
+                </div>
+            </button>
+
+            <button onclick="toggleModal('delete-modal', true)" class="w-full p-4 rounded-2xl bg-red-500/5 border border-red-500/20 flex items-center justify-between mt-6 text-red-500">
+                <span class="font-bold text-sm">Delete Account</span>
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    </main>
+
+    <nav class="nav-dock fixed bottom-0 w-full max-w-md flex justify-between items-center px-6 py-4 z-50">
+        <a href="index.html" class="text-slate-500 flex flex-col items-center gap-1"><i class="fa-solid fa-house"></i><span class="text-[10px]">Home</span></a>
+        <a href="chat.html" class="text-slate-500 flex flex-col items-center gap-1"><i class="fa-solid fa-message"></i><span class="text-[10px]">Chat</span></a>
+        <a href="lobby.html" class="center-game-btn w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl border-4 border-[#020617]"><i class="fa-solid fa-gem"></i></a>
+        <a href="wallet.html" class="text-slate-500 flex flex-col items-center gap-1"><i class="fa-solid fa-wallet"></i><span class="text-[10px]">Wallet</span></a>
+        <a href="account.html" class="text-blue-500 flex flex-col items-center gap-1"><i class="fa-solid fa-user"></i><span class="text-[10px]">Account</span></a>
+    </nav>
+
+    <div id="profile-modal" class="fixed inset-0 hidden items-center justify-center p-6 z-[100] bg-black/60 backdrop-blur-sm">
+        <div class="glass-card w-full max-w-sm p-6 space-y-5 border-blue-500/30">
+            <h3 class="font-black text-lg">Update Profile</h3>
+            <div class="space-y-4">
+                <div class="flex flex-col items-center gap-2">
+                    <label for="avatar-upload" class="cursor-pointer group relative">
+                        <div class="w-20 h-20 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center group-hover:border-blue-500 transition overflow-hidden">
+                            <img id="preview-img" class="hidden w-full h-full object-cover">
+                            <i id="preview-icon" class="fa-solid fa-camera text-slate-500 text-2xl"></i>
+                        </div>
+                        <div class="absolute bottom-0 right-0 bg-blue-600 w-6 h-6 rounded-full flex items-center justify-center border-2 border-slate-900">
+                            <i class="fa-solid fa-plus text-[10px]"></i>
+                        </div>
+                    </label>
+                    <input type="file" id="avatar-upload" class="hidden" accept="image/*" onchange="previewSelectedImage(this)">
+                    <span class="text-[10px] text-slate-500">Tap to change photo</span>
+                </div>
+                
+                <div class="relative">
+                    <label class="text-[10px] uppercase text-slate-500 font-bold mb-1 block ml-1">Username</label>
+                    <input id="edit-username" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50">
+                </div>
+
+                <button onclick="saveProfile()" id="save-btn" class="w-full bg-blue-600 py-4 rounded-xl font-bold active:scale-95 transition mt-2">Save Changes</button>
+                <button onclick="toggleModal('profile-modal', false)" class="w-full text-slate-500 text-xs font-bold uppercase tracking-widest">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-modal" class="fixed inset-0 hidden items-center justify-center p-6 z-[100] bg-black/80 backdrop-blur-md">
+        <div class="glass-card w-full max-w-sm p-6 text-center space-y-4 border-red-500/30">
+            <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 text-2xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="font-black text-lg text-red-500">Permanently Delete?</h3>
+            <p class="text-xs text-slate-400">This action cannot be undone. All coins and history will be lost. Type <span class="text-white font-bold">delete</span> to confirm.</p>
+            <input id="delete-confirm-input" type="text" placeholder="Type 'delete' here" class="w-full bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-center outline-none focus:border-red-500">
+            <div class="flex gap-2 pt-2">
+                <button onclick="toggleModal('delete-modal', false)" class="flex-1 bg-slate-800 py-3 rounded-xl font-bold text-xs">Cancel</button>
+                <button onclick="confirmDelete()" class="flex-1 bg-red-600 py-3 rounded-xl font-bold text-xs">Delete Now</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const FlowAccount = {
+            url: 'https://ueuhuyzuacvwqpfszrzy.supabase.co',
+            key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs',
+            client: null,
+            currentUser: null,
+
+            async init() {
+                this.client = window.supabase.createClient(this.url, this.key);
+                const { data: { session } } = await this.client.auth.getSession();
+                if (!session) return window.location.replace('auth.html');
+
+                this.currentUser = session.user;
+                
+                // Initialize heartbeat & challenges
+                initGlobalChallenges(this.client, this.currentUser, 'Account');
+                
+                // Fetch dynamic DB balance
+                this.fetchTableData();
+                // Load local profile details
+                this.loadUserData(this.currentUser);
+                
+                setTimeout(() => {
+                    const loader = document.getElementById('preloader');
+                    if(loader) {
+                        loader.style.opacity = '0';
+                        setTimeout(() => loader.remove(), 800);
+                    }
+                }, 1500);
+            },
+
+            async fetchTableData() {
+                const { data } = await this.client.from('profiles').select('*').eq('id', this.currentUser.id).single();
+                if (data) {
+                    document.getElementById('balance').innerText = parseFloat(data.coins).toLocaleString(undefined, {minimumFractionDigits: 2});
+                } else if (this.currentUser.user_metadata.coins) {
+                    document.getElementById('balance').innerText = parseFloat(this.currentUser.user_metadata.coins).toLocaleString(undefined, {minimumFractionDigits: 2});
+                }
+            },
+
+            async loadUserData(user) {
+                const meta = user.user_metadata;
+                document.getElementById('edit-username').value = meta.username || '';
+
+                const { data, count, error } = await this.client
+                    .from('user_activity')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('type', 'win');
+
+                this.updateUI(meta, count || 0);
+            },
+
+            updateUI(meta, wins) {
+                document.getElementById('user-greeting').innerText = meta.username || meta.first_name || 'Player';
+                document.getElementById('username-display').innerText = meta.username || 'Player';
+                
+                const imgEl = document.getElementById('avatar-img');
+                const placeholder = document.getElementById('avatar-placeholder');
+                const previewImg = document.getElementById('preview-img');
+                const previewIcon = document.getElementById('preview-icon');
+                
+                if (meta.avatar_url && meta.avatar_url !== "") {
+                    // Add cache-buster to ensure image refreshes
+                    const url = meta.avatar_url + '?t=' + new Date().getTime();
+                    
+                    imgEl.src = url;
+                    imgEl.classList.remove('hidden');
+                    placeholder.classList.add('hidden');
+                    
+                    previewImg.src = url;
+                    previewImg.classList.remove('hidden');
+                    previewIcon.classList.add('hidden');
+                }
+
+                const badge = document.getElementById('level-badge');
+                const levelText = document.getElementById('level-text');
+                if (wins >= 20) { badge.className = "badge-overlay lvl-3"; badge.innerText = "3"; levelText.innerText = "Level 3 Legend"; }
+                else if (wins >= 5) { badge.className = "badge-overlay lvl-2"; badge.innerText = "2"; levelText.innerText = "Level 2 Elite"; }
+                else { badge.className = "badge-overlay lvl-1"; badge.innerText = "1"; levelText.innerText = "Level 1 Rookie"; }
+            }
+        };
+
+        // --- GLOBAL CHALLENGE LOGIC ---
+        function initGlobalChallenges(supabaseClient, user, currentPageName) {
+            if (!user) return;
+
+            // Heartbeat Logic
+            const runHeartbeat = async () => {
+                await supabaseClient
+                    .from('profiles')
+                    .update({ 
+                        last_seen: new Date().toISOString(),
+                        current_location: currentPageName 
+                    })
+                    .eq('id', user.id);
+            };
+
+            runHeartbeat();
+            setInterval(runHeartbeat, 30000);
+
+            // Channel Listener
+            const globalChannel = supabaseClient.channel('global_alerts');
+            globalChannel
+                .on('broadcast', { event: 'incoming_challenge' }, ({ payload }) => {
+                    if (payload.targetId === user.id) showChallengePopup(payload);
+                })
+                .on('broadcast', { event: 'challenge_response' }, ({ payload }) => {
+                    if (payload.challengerId === user.id && payload.accepted) {
+                        window.location.href = `lobby.html?match=${payload.matchId}&opp=${payload.targetId}&role=host`;
+                    }
+                })
+                .subscribe();
+
+            window.globalAlertChannel = globalChannel;
+
+            // Response Handler
+            const handleResponse = async (accepted) => {
+                if (!window.currentChallenge) return;
+                clearTimeout(window.challengeTimeout);
+                document.getElementById('global-challenge-popup').classList.remove('active');
+
+                await globalChannel.send({
+                    type: 'broadcast',
+                    event: 'challenge_response',
+                    payload: { 
+                        challengerId: window.currentChallenge.challengerId, 
+                        targetId: user.id, 
+                        accepted: accepted, 
+                        matchId: window.currentChallenge.matchId 
+                    }
+                });
+
+                if (accepted) {
+                    window.location.href = `lobby.html?match=${window.currentChallenge.matchId}&opp=${window.currentChallenge.challengerId}&role=guest`;
+                }
+                window.currentChallenge = null;
+            };
+
+            document.getElementById('btn-accept-challenge').onclick = () => handleResponse(true);
+            document.getElementById('btn-decline-challenge').onclick = () => handleResponse(false);
+        }
+
+        function showChallengePopup(payload) {
+            window.currentChallenge = payload;
+            const popup = document.getElementById('global-challenge-popup');
+            const bar = document.getElementById('popup-timer-bar');
+            
+            document.getElementById('popup-challenger-name').innerText = payload.challengerName;
+            document.getElementById('popup-game-name').innerText = payload.game || "a Match";
+            document.getElementById('popup-challenger-img').src = payload.challengerAvatar || 'logo.png';
+            
+            bar.style.transition = 'none';
+            bar.style.width = '100%';
+            popup.classList.add('active');
+            
+            setTimeout(() => {
+                bar.style.transition = 'width 10s linear';
+                bar.style.width = '0%';
+            }, 50);
+
+            window.challengeTimeout = setTimeout(() => {
+                popup.classList.remove('active');
+                window.currentChallenge = null;
+            }, 10000);
+        }
+
+
+        // --- MODAL & UI HELPERS ---
+        function toggleModal(id, show) {
+            const el = document.getElementById(id);
+            el.classList.toggle('hidden', !show);
+            el.classList.toggle('flex', show);
+        }
+
+        function previewSelectedImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const preview = document.getElementById('preview-img');
+                    preview.src = e.target.result;
+                    preview.classList.remove('hidden');
+                    document.getElementById('preview-icon').classList.add('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // --- AUTH & ACCOUNT ACTIONS ---
+        async function saveProfile() {
+            const btn = document.getElementById('save-btn');
+            const fileInput = document.getElementById('avatar-upload');
+            const file = fileInput.files[0];
+            const newUsername = document.getElementById('edit-username').value;
+            
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+
+            const { data: { user } } = await FlowAccount.client.auth.getUser();
+            let finalAvatarUrl = user.user_metadata.avatar_url || '';
+
+            try {
+                if (file) {
+                    const fileExt = file.name.split('.').pop();
+                    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+                    const filePath = fileName;
+
+                    let { error: uploadError } = await FlowAccount.client.storage
+                        .from('avatars')
+                        .upload(filePath, file, { upsert: true });
+
+                    if (uploadError) throw uploadError;
+
+                    const { data } = FlowAccount.client.storage.from('avatars').getPublicUrl(filePath);
+                    finalAvatarUrl = data.publicUrl;
+                }
+
+                const { error: updateError } = await FlowAccount.client.auth.updateUser({ 
+                    data: { 
+                        username: newUsername,
+                        avatar_url: finalAvatarUrl 
+                    } 
+                });
+
+                if (updateError) throw updateError;
+
+                location.reload();
+            } catch (err) {
+                alert("Error: " + err.message);
+                btn.innerText = "Save Changes";
+                btn.disabled = false;
+            }
+        }
+
+        async function handleLogout() {
+            await FlowAccount.client.auth.signOut();
+            window.location.replace('auth.html');
+        }
+
+        async function confirmDelete() {
+            const input = document.getElementById('delete-confirm-input').value;
+            if (input.toLowerCase() === 'delete') {
+                await FlowAccount.client.auth.signOut();
+                window.location.replace('auth.html');
+            } else {
+                alert("Please type 'delete' to confirm.");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => FlowAccount.init());
+    </script>
+</body>
+</html>

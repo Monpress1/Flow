@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | 3D Coin Flip Arena</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+        
+        /* 3D Container */
+        #coin-canvas-container {
+            width: 100%;
+            height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Avatar Styling */
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1e293b;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+        .active-turn .player-avatar {
+            border: 3px solid #3b82f6;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+        }
+
+        /* Marquee Chat */
+        #marquee-container {
+            position: fixed; top: 120px; width: 100%; pointer-events: none;
+            overflow: hidden; white-space: nowrap; z-index: 50;
+        }
+        .marquee-text {
+            display: inline-block; animation: marquee 8s linear forwards;
+            font-weight: 800; font-size: 1.2rem; color: #60a5fa; text-shadow: 0 0 10px rgba(59,130,246,0.5);
+        }
+        @keyframes marquee {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+
+        /* SweetAlert Customization */
+        .swal2-popup { border-radius: 1.5rem !important; }
+        .swal2-title { font-weight: 900 !important; tracking: tight; }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen p-6">
+
+    <div class="flex justify-between items-end bg-slate-900/50 p-4 rounded-3xl border border-white/5 relative z-10">
+        
+        <div id="host-section" class="flex flex-col items-center gap-1 active-turn">
+            <img id="host-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="host-name" class="text-[10px] font-bold text-blue-400 uppercase w-20 text-center truncate">Host</p>
+            <h2 id="score-host" class="text-3xl font-black">0</h2>
+        </div>
+        
+        <div class="text-center pb-2">
+            <p class="text-xs font-black text-slate-500 italic">ROUND <span id="round-num">1</span>/5</p>
+            <div class="bg-yellow-500/10 px-3 py-1 rounded-full border border-yellow-500/20 mt-1">
+                <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Pot: <span id="display-pot">0</span></p>
+            </div>
+        </div>
+        
+        <div id="guest-section" class="flex flex-col items-center gap-1">
+            <img id="guest-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="guest-name" class="text-[10px] font-bold text-slate-400 uppercase w-20 text-center truncate">Guest</p>
+            <h2 id="score-guest" class="text-3xl font-black text-slate-400">0</h2>
+        </div>
+    </div>
+
+    <div class="flex-1 flex flex-col items-center justify-center relative">
+        <div id="coin-canvas-container"></div>
+        <div id="status-text" class="absolute bottom-4 text-sm font-bold text-blue-400 animate-pulse tracking-widest uppercase">Connecting...</div>
+    </div>
+
+    <div id="marquee-container"></div>
+
+    <div class="space-y-4 mb-4 relative z-10">
+        <button id="flip-btn" onclick="triggerFlip()" class="hidden w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-900/40 active:scale-95 transition-all">FLIP COIN</button>
+        
+        <div class="flex items-center gap-2">
+            <div id="chat-input-container" class="hidden flex-1">
+                <input type="text" id="chat-input" placeholder="Type a message..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+            </div>
+            <button onclick="toggleChat()" class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center border border-white/10 hover:bg-slate-700 transition">
+                <i class="fa-solid fa-comment"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // --- GAME STATE ---
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'test_match';
+        const wager = parseInt(params.get('wager')) || 100;
+        const hostId = params.get('host');
+        const guestId = params.get('guest');
+        
+        let currentUser = null;
+        let myRole = ""; 
+        let currentRound = 1;
+        let scores = { host: 0, guest: 0 };
+        let gameActive = true;
+        let currentTurn = 'host'; // Host always flips first
+
+        // AFK Variables
+        let lastHeartbeat = Date.now();
+        let afkCheckInterval;
+
+        // --- THREE.JS GLOBALS ---
+        let scene, camera, renderer, coinMesh;
+        let isFlipping3D = false;
+        let flipStartTime = 0;
+        let targetRotationX = 0;
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            if (!session && window.location.hostname !== "localhost") {
+                // If no session, redirect or handle. Commenting out redirect for isolated testing.
+                // window.location.replace('auth.html');
+            }
+            currentUser = session ? session.user : { id: hostId }; // Fallback for testing
+            myRole = currentUser.id === hostId ? "host" : "guest";
+            
+            document.getElementById('display-pot').innerText = (wager * 2).toLocaleString();
+            
+            await fetchPlayerProfiles();
+            initThreeJS();
+            setupRealtime();
+            startHeartbeat();
+            updateTurnUI();
+        }
+
+        async function fetchPlayerProfiles() {
+            // Function to generate a fallback avatar
+            const getFallbackAvatar = (name) => `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff&bold=true`;
+
+            // Attempt to fetch host info
+            const { data: hostData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', hostId).single();
+            const hostMeta = hostData?.raw_user_meta_data || { username: 'Host' };
+            document.getElementById('host-name').innerText = hostMeta.username || 'Host';
+            document.getElementById('host-pfp').src = hostMeta.avatar_url || getFallbackAvatar(hostMeta.username || 'H');
+
+            // Attempt to fetch guest info
+            const { data: guestData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', guestId).single();
+            const guestMeta = guestData?.raw_user_meta_data || { username: 'Guest' };
+            document.getElementById('guest-name').innerText = guestMeta.username || 'Waiting...';
+            document.getElementById('guest-pfp').src = guestMeta.avatar_url || getFallbackAvatar(guestMeta.username || 'G');
+        }
+
+        // --- THREE.JS COIN SETUP ---
+        function initThreeJS() {
+            const container = document.getElementById('coin-canvas-container');
+            scene = new THREE.Scene();
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.z = 12;
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 5, 5);
+            scene.add(dirLight);
+
+            // Coin Geometry (Radius top, Radius bottom, Height, Radial segments)
+            const geometry = new THREE.CylinderGeometry(3, 3, 0.4, 32);
+
+            // Generate Canvas Textures
+            const headsTexture = createCoinTexture('H', true);
+            const tailsTexture = createCoinTexture('T', false);
+            const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 });
+            const headsMaterial = new THREE.MeshStandardMaterial({ map: headsTexture, metalness: 0.5, roughness: 0.4 });
+            const tailsMaterial = new THREE.MeshStandardMaterial({ map: tailsTexture, metalness: 0.5, roughness: 0.4 });
+
+            // Materials array: [Side/Edge, Top(Heads), Bottom(Tails)]
+            coinMesh = new THREE.Mesh(geometry, [edgeMaterial, headsMaterial, tailsMaterial]);
+            
+            // Stand the coin up to face the camera (Heads facing forward initially)
+            coinMesh.rotation.x = Math.PI / 2;
+            
+            scene.add(coinMesh);
+
+            // Handle Resize
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            animate3D();
+        }
+
+        function createCoinTexture(text, isHeads) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+            if(isHeads) {
+                gradient.addColorStop(0, '#f59e0b');
+                gradient.addColorStop(1, '#fbbf24');
+            } else {
+                gradient.addColorStop(0, '#475569');
+                gradient.addColorStop(1, '#94a3b8');
+            }
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(256, 256, 256, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner Border
+            ctx.strokeStyle = isHeads ? '#b45309' : '#334155';
+            ctx.lineWidth = 20;
+            ctx.beginPath();
+            ctx.arc(256, 256, 230, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Text
+            ctx.fillStyle = isHeads ? '#78350f' : '#0f172a';
+            ctx.font = '900 250px Inter';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 276);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            
+            if (isFlipping3D) {
+                const elapsed = Date.now() - flipStartTime;
+                const duration = 3000;
+                let progress = elapsed / duration;
+                
+                if (progress >= 1) {
+                    progress = 1;
+                    isFlipping3D = false;
+                }
+
+                // Easing out sine
+                const easeOut = Math.sin((progress * Math.PI) / 2);
+
+                // Spin rapidly: Base rotation + (10 half-rotations for effect) + final calculated orientation
+                // To land on heads: rotation.x = Math.PI / 2
+                // To land on tails: rotation.x = -Math.PI / 2
+                
+                const totalSpins = Math.PI * 20; // 10 full rotations
+                coinMesh.rotation.x = (Math.PI / 2) + (totalSpins * easeOut) + (targetRotationX - (Math.PI / 2)) * easeOut;
+                
+                // Parabolic arc (jump up and down)
+                coinMesh.position.y = Math.sin(progress * Math.PI) * 4;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- REALTIME & LOGIC ---
+        function setupRealtime() {
+            const channel = flowClient.channel(matchId);
+            channel
+                .on('broadcast', { event: 'flip_result' }, ({ payload }) => {
+                    executeFlip(payload.result);
+                })
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    showMarquee(`${payload.sender}: ${payload.msg}`);
+                })
+                .on('broadcast', { event: 'heartbeat' }, () => {
+                    lastHeartbeat = Date.now();
+                })
+                .subscribe();
+
+            window.gameChannel = channel;
+        }
+
+        function startHeartbeat() {
+            setInterval(() => {
+                if (!gameActive) return;
+                window.gameChannel.send({ type: 'broadcast', event: 'heartbeat' });
+            }, 3000);
+
+            afkCheckInterval = setInterval(() => {
+                if (!gameActive) return;
+                if (Date.now() - lastHeartbeat > 15000) {
+                    gameActive = false;
+                    Swal.fire({
+                        title: 'Opponent Disconnected',
+                        text: 'You win by default!',
+                        icon: 'info',
+                        background: '#0f172a',
+                        color: '#fff',
+                        confirmButtonColor: '#3b82f6'
+                    }).then(() => finalizeGame(myRole));
+                }
+            }, 1000);
+        }
+
+        function updateTurnUI() {
+            const hostSec = document.getElementById('host-section');
+            const guestSec = document.getElementById('guest-section');
+            const btn = document.getElementById('flip-btn');
+            const status = document.getElementById('status-text');
+
+            if (currentTurn === 'host') {
+                hostSec.classList.add('active-turn');
+                guestSec.classList.remove('active-turn');
+            } else {
+                guestSec.classList.add('active-turn');
+                hostSec.classList.remove('active-turn');
+            }
+
+            if (!gameActive) {
+                btn.classList.add('hidden');
+                return;
+            }
+
+            if (myRole === currentTurn) {
+                btn.classList.remove('hidden');
+                status.innerText = "YOUR TURN TO FLIP!";
+                status.classList.remove('text-slate-500');
+                status.classList.add('text-blue-400');
+            } else {
+                btn.classList.add('hidden');
+                const waitingFor = currentTurn === 'host' ? 'Host' : 'Guest';
+                status.innerText = `WAITING FOR ${waitingFor.toUpperCase()}...`;
+                status.classList.remove('text-blue-400');
+                status.classList.add('text-slate-500');
+            }
+        }
+
+        function triggerFlip() {
+            if (isFlipping3D || !gameActive || myRole !== currentTurn) return;
+            const result = Math.random() < 0.5 ? 'heads' : 'tails';
+            window.gameChannel.send({ type: 'broadcast', event: 'flip_result', payload: { result } });
+            executeFlip(result);
+        }
+
+        function executeFlip(result) {
+            isFlipping3D = true;
+            flipStartTime = Date.now();
+            
+            // Set Three.js target rotation
+            // Heads faces +Y originally, rotated to +Z via Math.PI/2
+            // Tails faces -Y originally, rotated to +Z via -Math.PI/2
+            targetRotationX = result === 'heads' ? Math.PI / 2 : -Math.PI / 2;
+
+            document.getElementById('flip-btn').classList.add('hidden');
+            document.getElementById('status-text').innerText = "COIN IS IN THE AIR...";
+
+            setTimeout(() => {
+                isFlipping3D = false;
+                coinMesh.rotation.x = targetRotationX; // Snap exactly to make sure it's perfect
+                
+                updateScore(result);
+                
+                if (currentRound < 5) {
+                    currentRound++;
+                    document.getElementById('round-num').innerText = currentRound;
+                    
+                    // Switch turns
+                    currentTurn = currentTurn === 'host' ? 'guest' : 'host';
+                    updateTurnUI();
+                } else {
+                    determineWinner();
+                }
+            }, 3050);
+        }
+
+        function updateScore(result) {
+            if (result === 'heads') {
+                scores.host++;
+                document.getElementById('score-host').innerText = scores.host;
+            } else {
+                scores.guest++;
+                document.getElementById('score-guest').innerText = scores.guest;
+            }
+        }
+
+        function determineWinner() {
+            gameActive = false;
+            document.getElementById('status-text').innerText = "GAME OVER!";
+            
+            // If tied (shouldn't happen on odd rounds, but 5 rounds means tie is impossible)
+            const winner = scores.host > scores.guest ? 'host' : 'guest';
+            setTimeout(() => finalizeGame(winner), 1500);
+        }
+
+        async function finalizeGame(winnerRole) {
+            clearInterval(afkCheckInterval);
+            
+            if (myRole === winnerRole) {
+                // Calculation: Total Pot (Wager * 2) * 0.9 (180% of original single wager)
+                const totalPot = wager * 2;
+                const winnings = Math.floor(totalPot * 0.9);
+                
+                // Fire Confetti!
+                confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.6 },
+                    colors: ['#fbbf24', '#3b82f6', '#ffffff']
+                });
+
+                if (currentUser && currentUser.id) {
+                    const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                    if (data) {
+                        await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
+                    }
+                }
+                
+                Swal.fire({
+                    title: '🎉 VICTORY! 🎉',
+                    text: `Congratulations! You won ${winnings} coins!`,
+                    icon: 'success',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#3b82f6',
+                    confirmButtonText: 'Return to Lobby',
+                    customClass: { popup: 'border border-blue-500/30' }
+                }).then(() => window.location.replace('index.html'));
+
+            } else {
+                Swal.fire({
+                    title: 'DEFEAT 💀',
+                    text: 'Better luck next time!',
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#ef4444',
+                    confirmButtonText: 'Leave Arena',
+                    customClass: { popup: 'border border-red-500/30' }
+                }).then(() => window.location.replace('index.html'));
+            }
+        }
+
+        // --- CHAT SYSTEM ---
+        function toggleChat() {
+            const container = document.getElementById('chat-input-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value.trim();
+                if (!msg) return;
+                
+                const senderName = document.getElementById(`${myRole}-name`).innerText;
+                window.gameChannel.send({ type: 'broadcast', event: 'chat', payload: { msg, sender: senderName } });
+                showMarquee(`You: ${msg}`);
+                e.target.value = "";
+                toggleChat();
+            }
+        });
+
+        function showMarquee(text) {
+            const container = document.getElementById('marquee-container');
+            const el = document.createElement('div');
+            el.className = 'marquee-text';
+            el.innerText = text;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 8000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Flow | Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* --- 3D PRELOADER --- */
+        #preloader { position: fixed; inset: 0; background: #020617; z-index: 9999; display: flex; align-items: center; justify-content: center; perspective: 1000px; transition: opacity 0.6s ease; }
+        .droplet { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; position: absolute; animation: dropIn 0.8s cubic-bezier(0.5, 0, 1, 1) infinite; }
+        .ripple-ring { position: absolute; border-radius: 50%; border: 2px solid rgba(59, 130, 246, 0.5); transform: rotateX(75deg); animation: rippleFluid 1.5s ease-out infinite; }
+        @keyframes dropIn { 0% { transform: translateY(-100px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(0); opacity: 0; } }
+        @keyframes rippleFluid { 0% { width: 0; height: 0; opacity: 1; } 100% { width: 400px; height: 400px; opacity: 0; } }
+
+        /* --- GLASSMORPHISM & UI --- */
+        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass-modal { background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(59, 130, 246, 0.2); }
+        
+        #chat-box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+        #chat-box::-webkit-scrollbar { width: 0; }
+        .msg-bubble { max-width: 85%; animation: msgSlide 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+        @keyframes msgSlide { from { opacity: 0; transform: translateY(10px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+        /* --- RIPPLE EFFECT --- */
+        .ripple-btn { position: relative; overflow: hidden; cursor: pointer; }
+        .ripple { position: absolute; border-radius: 50%; transform: scale(0); animation: ripple-anim 600ms linear; background-color: rgba(255, 255, 255, 0.3); pointer-events: none; }
+        @keyframes ripple-anim { to { transform: scale(4); opacity: 0; } }
+
+        /* --- MODALS & ALERTS --- */
+        .challenge-alert { position: fixed; top: -100px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); border: 1px solid #3b82f6; border-radius: 1rem; z-index: 1000; transition: top 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); }
+        .challenge-alert.active { top: 20px; }
+        #emoji-picker { display: none; grid-template-columns: repeat(6, 1fr); gap: 12px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 1.5rem; position: absolute; bottom: 100px; left: 10px; right: 10px; z-index: 50; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body class="max-w-md mx-auto relative">
+
+    <div id="preloader"><div class="droplet"></div><div class="ripple-ring"></div></div>
+
+    <div id="challenge-popup" class="challenge-alert p-4 flex items-center gap-4 shadow-2xl">
+        <div class="relative inline-block">
+            <img id="challenger-img" src="" class="w-12 h-12 rounded-full border-2 border-blue-500 object-cover">
+        </div>
+        <div class="flex-1">
+            <p class="text-[10px] font-bold text-blue-400">NEW CHALLENGE</p>
+            <p id="challenger-name" class="text-sm font-black text-white">Player</p>
+        </div>
+        <button id="accept-challenge" class="bg-green-500 p-2 rounded-full w-10 h-10 ripple-btn"><i class="fa-solid fa-check"></i></button>
+        <button onclick="hideChallenge()" class="bg-red-500/20 text-red-500 p-2 rounded-full w-10 h-10 ripple-btn"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <header class="p-4 flex justify-between items-center glass-panel sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <button onclick="window.location.href='index.html'" class="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 border border-white/10 active:scale-90 transition ripple-btn"><i class="fa-solid fa-chevron-left text-slate-300"></i></button>
+            <div>
+                <h1 id="header-username" class="text-sm font-black tracking-tighter uppercase text-white shadow-sm">Loading...</h1>
+                <p id="online-count" class="text-[9px] text-blue-400 font-bold uppercase tracking-widest">● 0 Online</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="glass-panel px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                <i class="fa-solid fa-coins text-yellow-500 text-[10px]"></i>
+                <span id="balance" class="text-[10px] font-black text-white">0.00</span>
+            </div>
+            <div class="relative inline-block">
+                <img id="my-avatar" src="" class="w-9 h-9 rounded-full border border-blue-500 p-0.5 bg-slate-800 object-cover">
+                <span class="absolute -bottom-1 -right-1 bg-blue-600 text-white text-[8px] font-black px-1 rounded-sm border border-[#020617]">Lv.1</span>
+            </div>
+        </div>
+    </header>
+
+    <div id="chat-box"></div>
+
+    <div id="emoji-picker"></div>
+
+    <footer class="p-4 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 pb-8 relative z-40">
+        <div id="tag-preview" class="hidden glass-panel border-l-4 border-blue-500 p-2 mb-3 rounded-r-lg flex justify-between items-center">
+            <div class="truncate text-xs">
+                <span id="tag-user" class="font-bold text-blue-400 block"></span>
+                <span id="tag-text" class="text-slate-300 italic"></span>
+            </div>
+            <button onclick="clearTag()" class="text-slate-400 px-2 ripple-btn rounded-full"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button id="emoji-btn" onclick="toggleEmoji()" class="text-slate-400 text-2xl active:scale-110 transition ripple-btn p-1 rounded-full"><i class="fa-regular fa-face-laugh"></i></button>
+            <div class="flex-1 glass-panel rounded-2xl flex items-center px-4 focus-within:border-blue-500 transition shadow-lg">
+                <input id="msg-input" type="text" placeholder="Type a message..." class="bg-transparent w-full py-4 text-sm outline-none text-white placeholder-slate-500">
+                <button onclick="sendMessage()" class="text-blue-500 active:scale-90 transition ripple-btn p-2 rounded-full"><i class="fa-solid fa-paper-plane text-xl"></i></button>
+            </div>
+        </div>
+    </footer>
+
+    <div id="user-modal" class="fixed inset-0 hidden items-center justify-center p-6 z-[200] bg-black/80 backdrop-blur-sm">
+        <div class="glass-modal w-full max-w-xs p-6 rounded-[2.5rem] text-center shadow-2xl">
+            <div class="relative inline-block mb-4">
+                <img id="modal-avatar" class="w-20 h-20 rounded-full border-4 border-[#020617] ring-2 ring-blue-500 object-cover bg-slate-800">
+                <span class="absolute bottom-0 right-0 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md border-2 border-[#020617]">Lv.1</span>
+            </div>
+            <h3 id="modal-username" class="font-black text-xl mb-6 text-white uppercase tracking-tight">Username</h3>
+            <div class="grid gap-3">
+                <button onclick="actionMention()" class="glass-panel text-white py-3 rounded-xl font-bold text-sm ripple-btn transition hover:bg-white/10">Mention</button>
+                <button onclick="actionPrivate()" class="glass-panel text-white py-3 rounded-xl font-bold text-sm ripple-btn transition hover:bg-white/10">Private Msg</button>
+                <button onclick="openGift()" class="bg-gradient-to-r from-yellow-500 to-amber-600 text-black py-3 rounded-xl font-black ripple-btn shadow-lg shadow-yellow-500/20">Gift Coins</button>
+                <button onclick="closeModal('user-modal')" class="mt-2 text-slate-500 text-xs font-black uppercase tracking-widest ripple-btn p-2 rounded-lg">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gift-modal" class="fixed inset-0 hidden items-center justify-center p-6 z-[210] bg-black/90 backdrop-blur-md">
+        <div class="glass-modal p-6 rounded-[2.5rem] w-full max-w-xs shadow-2xl text-center">
+            <div class="w-16 h-16 rounded-full glass-panel mx-auto flex items-center justify-center mb-4 border-yellow-500/50">
+                <i class="fa-solid fa-gift text-2xl text-yellow-500"></i>
+            </div>
+            <h3 class="font-black mb-4 text-white tracking-widest">SEND COINS</h3>
+            <div class="glass-panel rounded-xl mb-4 p-1 focus-within:border-yellow-500/50 transition border border-white/5">
+                <input id="gift-amount" type="number" placeholder="0" class="w-full bg-transparent py-3 text-center font-black text-2xl text-yellow-500 outline-none placeholder-yellow-900/50">
+            </div>
+            <button onclick="executeGift()" class="w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-black py-4 rounded-xl font-black ripple-btn shadow-lg shadow-yellow-500/20">CONFIRM GIFT</button>
+            <button onclick="closeModal('gift-modal')" class="mt-4 text-slate-500 text-xs font-black uppercase tracking-widest ripple-btn p-2 rounded-lg">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flow = window.supabase.createClient(SB_URL, SB_KEY);
+
+        let user = null;
+        let myProfile = null;
+        let selectedUser = null;
+        let taggedMsg = null;
+        let isPrivate = false;
+
+        // Ripple Effect Logic
+        document.addEventListener('click', function(e) {
+            const target = e.target.closest('.ripple-btn');
+            if (target) {
+                const rect = target.getBoundingClientRect();
+                const circle = document.createElement('span');
+                const diameter = Math.max(rect.width, rect.height);
+                const radius = diameter / 2;
+                circle.style.width = circle.style.height = `${diameter}px`;
+                circle.style.left = `${e.clientX - rect.left - radius}px`;
+                circle.style.top = `${e.clientY - rect.top - radius}px`;
+                circle.classList.add('ripple');
+                const existing = target.querySelector('.ripple');
+                if (existing) existing.remove();
+                target.appendChild(circle);
+            }
+        });
+
+        // Close Emoji Picker when clicking outside
+        document.addEventListener('click', (e) => {
+            const picker = document.getElementById('emoji-picker');
+            const btn = document.getElementById('emoji-btn');
+            if (picker.style.display === 'grid' && !picker.contains(e.target) && !btn.contains(e.target)) {
+                picker.style.display = 'none';
+            }
+        });
+
+        async function init() {
+            const { data: { session } } = await flow.auth.getSession();
+            if (!session) return window.location.replace('auth.html');
+            user = session.user;
+
+            await getProfile();
+            await loadMessages();
+            setupRealtime();
+            setupPresence();
+            initEmojiPicker();
+
+            document.getElementById('preloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('preloader').remove(), 600);
+        }
+
+        async function getProfile() {
+            const { data, error } = await flow.from('profiles').select('*').eq('id', user.id).single();
+            if (data) {
+                myProfile = data;
+                document.getElementById('header-username').innerText = data.username || 'User';
+                document.getElementById('balance').innerText = parseFloat(data.coins).toLocaleString();
+                if(data.avatar_url) document.getElementById('my-avatar').src = data.avatar_url;
+                await flow.from('profiles').update({ current_location: 'Chat', last_seen: new Date() }).eq('id', user.id);
+            }
+        }
+
+        async function loadMessages() {
+            const { data, error } = await flow.from('global_messages')
+                .select('*, sender:sender_id(username, avatar_url)')
+                .or(`recipient_id.is.null,recipient_id.eq.${user.id},sender_id.eq.${user.id}`)
+                .order('created_at', { ascending: true })
+                .limit(50);
+            
+            if (data) {
+                const container = document.getElementById('chat-box');
+                container.innerHTML = '';
+                data.forEach(msg => renderMessage(msg));
+            }
+        }
+
+        function renderMessage(msg) {
+            const isMe = msg.sender_id === user.id;
+            const container = document.getElementById('chat-box');
+            
+            const senderName = msg.sender?.username || (isMe ? myProfile?.username : "User");
+            const senderAvatar = msg.sender?.avatar_url || ""; // Strictly strictly DB fetched, no DiceBear.
+
+            const div = document.createElement('div');
+            div.className = `msg-bubble flex gap-3 ${isMe ? 'flex-row-reverse ml-auto' : ''}`;
+            div.ondblclick = () => tagMessage(msg, senderName);
+
+            div.innerHTML = `
+                <div class="relative self-end cursor-pointer">
+                    <img onclick="openUser('${senderName}', '${senderAvatar}', '${msg.sender_id}')" 
+                         src="${senderAvatar}" 
+                         class="w-8 h-8 rounded-full bg-slate-800 border border-white/10 object-cover"
+                         onerror="this.style.display='none'">
+                    <span class="absolute -bottom-1 -right-1 bg-blue-600 text-white text-[7px] font-black px-1 rounded-sm border border-[#020617]">Lv.1</span>
+                </div>
+                <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%]">
+                    <span class="text-[9px] text-slate-500 font-black mb-1 px-1 uppercase tracking-wider">${senderName} ${msg.recipient_id ? '🔒 PVT' : ''}</span>
+                    <div class="p-3 rounded-2xl text-sm shadow-sm backdrop-blur-md ${isMe ? 'bg-blue-600/90 text-white rounded-br-none border border-blue-500/50' : 'bg-white/10 text-slate-200 rounded-bl-none border border-white/5'}">
+                        ${msg.reply_to_data ? `<div class="bg-black/20 p-2 rounded-lg mb-2 text-[10px] italic border-l-2 border-blue-400 text-slate-300">@${msg.reply_to_data.name}: ${msg.reply_to_data.text}</div>` : ''}
+                        ${msg.content}
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function logActivity(type, title, amount = 0, targetId = user.id) {
+            await flow.from('user_activity').insert([{
+                user_id: targetId, type: type, title: title, amount: amount
+            }]);
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('msg-input');
+            const content = input.value.trim();
+            if (!content) return;
+
+            const payload = {
+                sender_id: user.id,
+                content: content,
+                recipient_id: isPrivate ? selectedUser.id : null,
+                reply_to_data: taggedMsg ? { name: taggedMsg.name, text: taggedMsg.content } : null
+            };
+
+            input.value = '';
+            clearTag();
+            
+            const { error } = await flow.from('global_messages').insert([payload]);
+            if (!error) {
+                // Log private messages and mentions to activity table
+                if (payload.recipient_id) {
+                    await logActivity('private_chat', `Started private chat with ${selectedUser.name}`, 0);
+                    await logActivity('private_chat', `Received private chat from ${myProfile.username}`, 0, selectedUser.id);
+                } else if (content.includes('@')) {
+                    await logActivity('mention', `Mentioned in a message`, 0);
+                }
+            } else {
+                console.error("Send Error:", error);
+            }
+        }
+
+        function setupRealtime() {
+            flow.channel('global_chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_messages' }, async (payload) => {
+                const { data } = await flow.from('global_messages')
+                    .select('*, sender:sender_id(username, avatar_url)')
+                    .eq('id', payload.new.id)
+                    .single();
+                
+                if (data && (!data.recipient_id || data.recipient_id === user.id || data.sender_id === user.id)) {
+                    renderMessage(data);
+                }
+            }).subscribe();
+
+            flow.channel('global_alerts').on('broadcast', { event: 'incoming_challenge' }, ({ payload }) => {
+                if (payload.targetId === user.id) showChallenge(payload);
+            }).subscribe();
+        }
+
+        function setupPresence() {
+            const chan = flow.channel('online_users');
+            chan.on('presence', { event: 'sync' }, () => {
+                document.getElementById('online-count').innerText = `● ${Object.keys(chan.presenceState()).length} Online`;
+            }).subscribe(async (s) => {
+                if (s === 'SUBSCRIBED') await chan.track({ user: user.id });
+            });
+        }
+
+        function tagMessage(msg, name) {
+            taggedMsg = { name: name, content: msg.content };
+            document.getElementById('tag-user').innerText = `Replying to ${name}`;
+            document.getElementById('tag-text').innerText = msg.content;
+            document.getElementById('tag-preview').classList.remove('hidden');
+            document.getElementById('msg-input').focus();
+        }
+
+        function clearTag() {
+            taggedMsg = null;
+            isPrivate = false;
+            document.getElementById('tag-preview').classList.add('hidden');
+        }
+
+        function initEmojiPicker() {
+            const emojis = ['🔥','💎','👑','💰','🚀','👻','🎮','❤️','😂','🙌','⚡','🤑','🏆','🍀','🍕','🍻','👋','✨'];
+            const picker = document.getElementById('emoji-picker');
+            emojis.forEach(e => {
+                const b = document.createElement('button');
+                b.className = "text-2xl active:scale-150 transition ripple-btn p-2 rounded-xl";
+                b.innerText = e;
+                b.onclick = () => { 
+                    document.getElementById('msg-input').value += e; 
+                    document.getElementById('msg-input').focus();
+                };
+                picker.appendChild(b);
+            });
+        }
+
+        function toggleEmoji() {
+            const p = document.getElementById('emoji-picker');
+            p.style.display = p.style.display === 'grid' ? 'none' : 'grid';
+        }
+
+        function openUser(name, avatar, id) {
+            if (id === user.id) return;
+            selectedUser = { name, avatar, id };
+            document.getElementById('modal-username').innerText = name;
+            document.getElementById('modal-avatar').src = avatar;
+            document.getElementById('user-modal').classList.remove('hidden');
+            document.getElementById('user-modal').classList.add('flex');
+        }
+
+        function actionMention() {
+            document.getElementById('msg-input').value = `@${selectedUser.name} `;
+            document.getElementById('msg-input').focus();
+            closeModal('user-modal');
+        }
+
+        function actionPrivate() {
+            isPrivate = true;
+            tagMessage({ content: "Private Message Locked" }, selectedUser.name);
+            closeModal('user-modal');
+        }
+
+        function openGift() {
+            closeModal('user-modal');
+            document.getElementById('gift-modal').classList.remove('hidden');
+            document.getElementById('gift-modal').classList.add('flex');
+        }
+
+        async function executeGift() {
+            const amt = parseFloat(document.getElementById('gift-amount').value);
+            if (!amt || amt <= 0 || amt > myProfile.coins) return alert("Insufficient Balance");
+
+            const { error } = await flow.rpc('transfer_coins_and_notify', { 
+                sender_id: user.id, 
+                receiver_id: selectedUser.id, 
+                amount: amt, 
+                notif_type: 'gift' 
+            });
+
+            if (!error) {
+                // Deduct locally and update UI instantly
+                myProfile.coins -= amt;
+                document.getElementById('balance').innerText = parseFloat(myProfile.coins).toLocaleString();
+
+                await flow.from('global_messages').insert([{
+                    sender_id: user.id, 
+                    recipient_id: selectedUser.id, 
+                    content: `🎁 Gifted ${amt} coins to ${selectedUser.name}!`
+                }]);
+                closeModal('gift-modal');
+            } else {
+                console.error("Gift Error: ", error);
+                alert("Transaction failed.");
+            }
+        }
+
+        function showChallenge(payload) {
+            const p = document.getElementById('challenge-popup');
+            document.getElementById('challenger-img').src = payload.challengerAvatar;
+            document.getElementById('challenger-name').innerText = payload.challengerName;
+            p.classList.add('active');
+            document.getElementById('accept-challenge').onclick = () => {
+                window.location.href = `lobby.html?match=${payload.matchId}&opp=${payload.challengerId}&role=guest`;
+            };
+        }
+
+        function hideChallenge() { document.getElementById('challenge-popup').classList.remove('active'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

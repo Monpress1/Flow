@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Tap Tap Coin Arena</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; user-select: none; }
+        
+        /* Avatar Styling */
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1e293b;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+        .winning-player .player-avatar {
+            border: 3px solid #fbbf24;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+        }
+
+        /* Tap Arena */
+        #tap-arena {
+            width: 100%;
+            height: 350px;
+            position: relative;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.05);
+            overflow: hidden;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        /* Coin Button Styling */
+        .tap-coin {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #fcd34d, #d97706);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 0 10px #b45309;
+            border: 2px solid #fef3c7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #78350f;
+            cursor: pointer;
+            transition: transform 0.05s ease;
+            z-index: 10;
+            display: none; /* Hidden until game starts */
+        }
+        .tap-coin:active {
+            transform: scale(0.8);
+            filter: brightness(1.2);
+        }
+
+        /* Giant Background Timer */
+        #bg-timer {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10rem;
+            font-weight: 900;
+            color: rgba(255,255,255,0.03);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Marquee Chat */
+        #marquee-container {
+            position: fixed; top: 120px; width: 100%; pointer-events: none;
+            overflow: hidden; white-space: nowrap; z-index: 50;
+        }
+        .marquee-text {
+            display: inline-block; animation: marquee 8s linear forwards;
+            font-weight: 800; font-size: 1.2rem; color: #60a5fa; text-shadow: 0 0 10px rgba(59,130,246,0.5);
+        }
+        @keyframes marquee {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+
+        .swal2-popup { border-radius: 1.5rem !important; }
+        .swal2-title { font-weight: 900 !important; tracking: tight; }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen p-6">
+
+    <div class="flex justify-between items-end bg-slate-900/50 p-4 rounded-3xl border border-white/5 relative z-10 mb-4">
+        
+        <div id="host-section" class="flex flex-col items-center gap-1">
+            <img id="host-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="host-name" class="text-[10px] font-bold text-blue-400 uppercase w-20 text-center truncate">Host</p>
+            <h2 id="score-host" class="text-3xl font-black">0</h2>
+        </div>
+        
+        <div class="text-center pb-2">
+            <p class="text-xs font-black text-slate-500 italic">TIMER</p>
+            <div class="bg-blue-500/10 px-4 py-1 rounded-full border border-blue-500/20 mt-1">
+                <p class="text-[14px] text-blue-400 font-bold tracking-widest"><span id="main-timer">60</span>s</p>
+            </div>
+        </div>
+        
+        <div id="guest-section" class="flex flex-col items-center gap-1">
+            <img id="guest-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="guest-name" class="text-[10px] font-bold text-slate-400 uppercase w-20 text-center truncate">Guest</p>
+            <h2 id="score-guest" class="text-3xl font-black text-slate-400">0</h2>
+        </div>
+    </div>
+
+    <div class="flex-1 flex flex-col items-center justify-center relative w-full">
+        <div id="tap-arena">
+            <div id="bg-timer">60</div>
+            </div>
+        <div id="status-text" class="absolute bottom-[-25px] text-sm font-bold text-slate-400 tracking-widest uppercase">Waiting for host...</div>
+    </div>
+
+    <div id="marquee-container"></div>
+
+    <div class="space-y-4 mt-8 mb-4 relative z-10 w-full">
+        <button id="start-btn" onclick="triggerStartGame()" class="hidden w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-900/40 active:scale-95 transition-all">START GAME</button>
+        
+        <div class="flex items-center gap-2">
+            <div id="chat-input-container" class="hidden flex-1">
+                <input type="text" id="chat-input" placeholder="Type a message..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+            </div>
+            <button onclick="toggleChat()" class="w-full flex-1 rounded-2xl bg-slate-800 flex items-center justify-center border border-white/10 hover:bg-slate-700 py-4 transition font-bold text-sm tracking-widest">
+                <i class="fa-solid fa-comment mr-2"></i> CHAT
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // --- GAME STATE ---
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'tap_test_match';
+        const hostId = params.get('host');
+        const guestId = params.get('guest');
+        
+        let currentUser = null;
+        let myRole = ""; 
+        let scores = { host: 0, guest: 0 };
+        let gameActive = false;
+        let timeLeft = 60;
+        let timerInterval;
+
+        const TOTAL_COINS = 5;
+        const COIN_SIZE = 50; 
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            currentUser = session ? session.user : { id: hostId }; // Fallback for testing
+            myRole = currentUser.id === hostId ? "host" : "guest";
+            
+            await fetchPlayerProfiles();
+            buildArena();
+            setupRealtime();
+            
+            if (myRole === 'host') {
+                document.getElementById('start-btn').classList.remove('hidden');
+                document.getElementById('status-text').innerText = "YOU ARE THE HOST";
+            }
+        }
+
+        async function fetchPlayerProfiles() {
+            const getFallbackAvatar = (name) => `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff&bold=true`;
+
+            // Host
+            const { data: hostData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', hostId).single();
+            const hostMeta = hostData?.raw_user_meta_data || { username: 'Host' };
+            document.getElementById('host-name').innerText = hostMeta.username || 'Host';
+            document.getElementById('host-pfp').src = hostMeta.avatar_url || getFallbackAvatar(hostMeta.username || 'H');
+
+            // Guest
+            const { data: guestData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', guestId).single();
+            const guestMeta = guestData?.raw_user_meta_data || { username: 'Guest' };
+            document.getElementById('guest-name').innerText = guestMeta.username || 'Waiting...';
+            document.getElementById('guest-pfp').src = guestMeta.avatar_url || getFallbackAvatar(guestMeta.username || 'G');
+        }
+
+        // --- ARENA SETUP ---
+        function buildArena() {
+            const arena = document.getElementById('tap-arena');
+            for (let i = 0; i < TOTAL_COINS; i++) {
+                const coin = document.createElement('div');
+                coin.id = `coin-${i}`;
+                coin.className = 'tap-coin';
+                coin.innerHTML = '<i class="fa-solid fa-dollar-sign"></i>';
+                
+                // Add touch and click event listeners for fast tapping
+                coin.addEventListener('touchstart', (e) => { e.preventDefault(); handleTap(i); });
+                coin.addEventListener('mousedown', (e) => { e.preventDefault(); handleTap(i); });
+                
+                arena.appendChild(coin);
+            }
+        }
+
+        function getRandomPosition() {
+            const arena = document.getElementById('tap-arena');
+            const maxX = arena.clientWidth - COIN_SIZE;
+            const maxY = arena.clientHeight - COIN_SIZE;
+            
+            const x = Math.max(0, Math.floor(Math.random() * maxX));
+            const y = Math.max(0, Math.floor(Math.random() * maxY));
+            return { x, y };
+        }
+
+        function moveCoin(id, x, y) {
+            const coin = document.getElementById(`coin-${id}`);
+            if(coin) {
+                coin.style.left = `${x}px`;
+                coin.style.top = `${y}px`;
+            }
+        }
+
+        // --- REALTIME ---
+        function setupRealtime() {
+            const channel = flowClient.channel(matchId);
+            channel
+                .on('broadcast', { event: 'start_game' }, () => {
+                    executeCountdown();
+                })
+                .on('broadcast', { event: 'tap' }, ({ payload }) => {
+                    syncTap(payload);
+                })
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    showMarquee(`${payload.sender}: ${payload.msg}`);
+                })
+                .subscribe();
+
+            window.gameChannel = channel;
+        }
+
+        // --- GAME LOGIC ---
+        function triggerStartGame() {
+            window.gameChannel.send({ type: 'broadcast', event: 'start_game' });
+            executeCountdown();
+        }
+
+        function executeCountdown() {
+            document.getElementById('start-btn').classList.add('hidden');
+            let count = 3;
+            const status = document.getElementById('status-text');
+            
+            const countdownInterval = setInterval(() => {
+                if (count > 0) {
+                    status.innerText = `STARTING IN ${count}...`;
+                    status.classList.remove('text-slate-400');
+                    status.classList.add('text-yellow-400', 'text-xl');
+                    count--;
+                } else {
+                    clearInterval(countdownInterval);
+                    status.innerText = "TAP THE COINS!!!";
+                    status.classList.replace('text-yellow-400', 'text-blue-400');
+                    startGameplay();
+                }
+            }, 1000);
+        }
+
+        function startGameplay() {
+            gameActive = true;
+            
+            // Show and randomize initial coin positions
+            for (let i = 0; i < TOTAL_COINS; i++) {
+                const coin = document.getElementById(`coin-${i}`);
+                coin.style.display = 'flex';
+                const pos = getRandomPosition();
+                moveCoin(i, pos.x, pos.y);
+            }
+
+            // Start 60s Timer
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('main-timer').innerText = timeLeft;
+                document.getElementById('bg-timer').innerText = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function handleTap(coinId) {
+            if (!gameActive) return;
+
+            // Generate new position to evade the player
+            const newPos = getRandomPosition();
+            
+            // Move locally immediately for responsiveness
+            moveCoin(coinId, newPos.x, newPos.y);
+            
+            // Increment local score
+            updateScore(myRole);
+
+            // Broadcast tap to opponent
+            window.gameChannel.send({ 
+                type: 'broadcast', 
+                event: 'tap', 
+                payload: { 
+                    playerRole: myRole, 
+                    coinId: coinId, 
+                    newX: newPos.x, 
+                    newY: newPos.y 
+                } 
+            });
+        }
+
+        function syncTap(payload) {
+            // Update opponent score and move the coin on our screen so it's synced
+            if (payload.playerRole !== myRole) {
+                updateScore(payload.playerRole);
+                moveCoin(payload.coinId, payload.newX, payload.newY);
+            }
+        }
+
+        function updateScore(role) {
+            scores[role]++;
+            document.getElementById(`score-${role}`).innerText = scores[role];
+
+            // Visual feedback for who is winning
+            const hostSec = document.getElementById('host-section');
+            const guestSec = document.getElementById('guest-section');
+
+            if (scores.host > scores.guest) {
+                hostSec.classList.add('winning-player');
+                guestSec.classList.remove('winning-player');
+            } else if (scores.guest > scores.host) {
+                guestSec.classList.add('winning-player');
+                hostSec.classList.remove('winning-player');
+            } else {
+                hostSec.classList.remove('winning-player');
+                guestSec.classList.remove('winning-player');
+            }
+        }
+
+        function endGame() {
+            gameActive = false;
+            document.getElementById('status-text').innerText = "TIME'S UP!";
+            
+            // Hide coins
+            for (let i = 0; i < TOTAL_COINS; i++) {
+                document.getElementById(`coin-${i}`).style.display = 'none';
+            }
+
+            setTimeout(() => {
+                let winnerRole = 'tie';
+                if (scores.host > scores.guest) winnerRole = 'host';
+                if (scores.guest > scores.host) winnerRole = 'guest';
+
+                finalizeGame(winnerRole);
+            }, 1000);
+        }
+
+        function finalizeGame(winnerRole) {
+            if (winnerRole === 'tie') {
+                Swal.fire({
+                    title: 'IT\'S A TIE!',
+                    text: `Both tapped ${scores.host} times!`,
+                    icon: 'info',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#3b82f6'
+                }).then(() => window.location.replace('index.html'));
+                return;
+            }
+
+            if (myRole === winnerRole) {
+                confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 }, colors: ['#fbbf24', '#3b82f6', '#ffffff'] });
+                Swal.fire({
+                    title: '🎉 YOU WIN! 🎉',
+                    text: `You dominated with ${scores[myRole]} taps!`,
+                    icon: 'success',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#3b82f6',
+                    customClass: { popup: 'border border-blue-500/30' }
+                }).then(() => window.location.replace('index.html'));
+            } else {
+                Swal.fire({
+                    title: 'DEFEAT 💀',
+                    text: `Opponent beat you with ${scores[winnerRole]} taps.`,
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#ef4444',
+                    customClass: { popup: 'border border-red-500/30' }
+                }).then(() => window.location.replace('index.html'));
+            }
+        }
+
+        // --- CHAT SYSTEM ---
+        function toggleChat() {
+            const container = document.getElementById('chat-input-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value.trim();
+                if (!msg) return;
+                
+                const senderName = document.getElementById(`${myRole}-name`).innerText;
+                window.gameChannel.send({ type: 'broadcast', event: 'chat', payload: { msg, sender: senderName } });
+                showMarquee(`You: ${msg}`);
+                e.target.value = "";
+                toggleChat();
+            }
+        });
+
+        function showMarquee(text) {
+            const container = document.getElementById('marquee-container');
+            const el = document.createElement('div');
+            el.className = 'marquee-text';
+            el.innerText = text;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 8000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

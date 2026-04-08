@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Dice Roll Arena</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+        
+        /* Avatar Styling */
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1e293b;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+        .active-turn .player-avatar {
+            border: 3px solid #3b82f6;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+        }
+
+        /* Dice Container & Animation */
+        #dice-container {
+            font-size: 8rem;
+            color: #fbbf24;
+            filter: drop-shadow(0 10px 15px rgba(251, 191, 36, 0.3));
+            transition: transform 0.2s;
+        }
+        
+        .rolling {
+            animation: shake 0.4s infinite linear;
+            color: #60a5fa !important;
+            filter: drop-shadow(0 10px 15px rgba(96, 165, 250, 0.5)) !important;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg) scale(1); }
+            10% { transform: translate(-1px, -2px) rotate(-10deg) scale(1.1); }
+            20% { transform: translate(-3px, 0px) rotate(10deg) scale(1.1); }
+            30% { transform: translate(3px, 2px) rotate(0deg) scale(1.1); }
+            40% { transform: translate(1px, -1px) rotate(10deg) scale(1.1); }
+            50% { transform: translate(-1px, 2px) rotate(-10deg) scale(1.1); }
+            60% { transform: translate(-3px, 1px) rotate(0deg) scale(1.1); }
+            70% { transform: translate(3px, 1px) rotate(-10deg) scale(1.1); }
+            80% { transform: translate(-1px, -1px) rotate(10deg) scale(1.1); }
+            90% { transform: translate(1px, 2px) rotate(0deg) scale(1.1); }
+            100% { transform: translate(1px, -2px) rotate(-10deg) scale(1); }
+        }
+
+        /* Marquee Chat */
+        #marquee-container {
+            position: fixed; top: 120px; width: 100%; pointer-events: none;
+            overflow: hidden; white-space: nowrap; z-index: 50;
+        }
+        .marquee-text {
+            display: inline-block; animation: marquee 8s linear forwards;
+            font-weight: 800; font-size: 1.2rem; color: #60a5fa; text-shadow: 0 0 10px rgba(59,130,246,0.5);
+        }
+        @keyframes marquee {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+
+        /* SweetAlert Customization */
+        .swal2-popup { border-radius: 1.5rem !important; }
+        .swal2-title { font-weight: 900 !important; tracking: tight; }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen p-6">
+
+    <div class="flex justify-between items-end bg-slate-900/50 p-4 rounded-3xl border border-white/5 relative z-10">
+        
+        <div id="host-section" class="flex flex-col items-center gap-1 active-turn">
+            <img id="host-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="host-name" class="text-[10px] font-bold text-blue-400 uppercase w-20 text-center truncate">Host</p>
+            <h2 id="score-host" class="text-3xl font-black">0</h2>
+        </div>
+        
+        <div class="text-center pb-2">
+            <p class="text-xs font-black text-slate-500 italic">ROUND <span id="round-num">1</span>/5</p>
+            <div class="bg-yellow-500/10 px-3 py-1 rounded-full border border-yellow-500/20 mt-1">
+                <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Pot: <span id="display-pot">0</span></p>
+            </div>
+        </div>
+        
+        <div id="guest-section" class="flex flex-col items-center gap-1">
+            <img id="guest-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="guest-name" class="text-[10px] font-bold text-slate-400 uppercase w-20 text-center truncate">Guest</p>
+            <h2 id="score-guest" class="text-3xl font-black text-slate-400">0</h2>
+        </div>
+    </div>
+
+    <div class="flex-1 flex flex-col items-center justify-center relative">
+        <div id="dice-container">
+            <i id="dice-icon" class="fa-solid fa-dice-d20"></i>
+        </div>
+        <div id="roll-result-text" class="h-8 mt-4 text-2xl font-black text-yellow-400"></div>
+        <div id="status-text" class="absolute bottom-4 text-sm font-bold text-blue-400 animate-pulse tracking-widest uppercase">Connecting...</div>
+    </div>
+
+    <div id="marquee-container"></div>
+
+    <div class="space-y-4 mb-4 relative z-10">
+        <button id="roll-btn" onclick="triggerRoll()" class="hidden w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-900/40 active:scale-95 transition-all">ROLL DICE</button>
+        
+        <div class="flex items-center gap-2">
+            <div id="chat-input-container" class="hidden flex-1">
+                <input type="text" id="chat-input" placeholder="Type a message..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+            </div>
+            <button onclick="toggleChat()" class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center border border-white/10 hover:bg-slate-700 transition">
+                <i class="fa-solid fa-comment"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // --- GAME STATE ---
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'dice_test_match';
+        const wager = parseInt(params.get('wager')) || 100;
+        const hostId = params.get('host');
+        const guestId = params.get('guest');
+        
+        let currentUser = null;
+        let myRole = ""; 
+        let currentRound = 1;
+        let scores = { host: 0, guest: 0 };
+        let gameActive = true;
+        let currentTurn = 'host'; // Host always rolls first
+        let isRolling = false;
+
+        const diceIcons = [
+            'fa-dice-one', 'fa-dice-two', 'fa-dice-three',
+            'fa-dice-four', 'fa-dice-five', 'fa-dice-six'
+        ];
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            currentUser = session ? session.user : { id: hostId }; 
+            myRole = currentUser.id === hostId ? "host" : "guest";
+            
+            document.getElementById('display-pot').innerText = (wager * 2).toLocaleString();
+            
+            await fetchPlayerProfiles();
+            setupRealtime();
+            updateTurnUI();
+        }
+
+        async function fetchPlayerProfiles() {
+            const getFallbackAvatar = (name) => `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff&bold=true`;
+
+            // Host
+            const { data: hostData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', hostId).single();
+            const hostMeta = hostData?.raw_user_meta_data || { username: 'Host' };
+            document.getElementById('host-name').innerText = hostMeta.username || 'Host';
+            document.getElementById('host-pfp').src = hostMeta.avatar_url || getFallbackAvatar(hostMeta.username || 'H');
+
+            // Guest
+            const { data: guestData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', guestId).single();
+            const guestMeta = guestData?.raw_user_meta_data || { username: 'Guest' };
+            document.getElementById('guest-name').innerText = guestMeta.username || 'Waiting...';
+            document.getElementById('guest-pfp').src = guestMeta.avatar_url || getFallbackAvatar(guestMeta.username || 'G');
+        }
+
+        // --- REALTIME & LOGIC ---
+        function setupRealtime() {
+            const channel = flowClient.channel(matchId);
+            channel
+                .on('broadcast', { event: 'roll_result' }, ({ payload }) => {
+                    executeRoll(payload.result);
+                })
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    showMarquee(`${payload.sender}: ${payload.msg}`);
+                })
+                .subscribe();
+
+            window.gameChannel = channel;
+        }
+
+        function updateTurnUI() {
+            const hostSec = document.getElementById('host-section');
+            const guestSec = document.getElementById('guest-section');
+            const btn = document.getElementById('roll-btn');
+            const status = document.getElementById('status-text');
+
+            if (currentTurn === 'host') {
+                hostSec.classList.add('active-turn');
+                guestSec.classList.remove('active-turn');
+            } else {
+                guestSec.classList.add('active-turn');
+                hostSec.classList.remove('active-turn');
+            }
+
+            if (!gameActive) {
+                btn.classList.add('hidden');
+                return;
+            }
+
+            if (myRole === currentTurn) {
+                btn.classList.remove('hidden');
+                status.innerText = "YOUR TURN TO ROLL!";
+                status.classList.remove('text-slate-500');
+                status.classList.add('text-blue-400');
+            } else {
+                btn.classList.add('hidden');
+                const waitingFor = currentTurn === 'host' ? 'Host' : 'Guest';
+                status.innerText = `WAITING FOR ${waitingFor.toUpperCase()}...`;
+                status.classList.remove('text-blue-400');
+                status.classList.add('text-slate-500');
+            }
+        }
+
+        function triggerRoll() {
+            if (isRolling || !gameActive || myRole !== currentTurn) return;
+            
+            // Random number between 1 and 6
+            const result = Math.floor(Math.random() * 6) + 1;
+            
+            window.gameChannel.send({ type: 'broadcast', event: 'roll_result', payload: { result } });
+            executeRoll(result);
+        }
+
+        function executeRoll(finalNumber) {
+            isRolling = true;
+            document.getElementById('roll-btn').classList.add('hidden');
+            document.getElementById('status-text').innerText = "ROLLING...";
+            document.getElementById('roll-result-text').innerText = "";
+            
+            const diceContainer = document.getElementById('dice-container');
+            const diceIcon = document.getElementById('dice-icon');
+            diceContainer.classList.add('rolling');
+
+            // Rapidly change icons for the visual effect of rolling
+            let shuffleInterval = setInterval(() => {
+                const randomFace = Math.floor(Math.random() * 6);
+                diceIcon.className = `fa-solid ${diceIcons[randomFace]}`;
+            }, 100);
+
+            // Stop rolling after 2 seconds
+            setTimeout(() => {
+                clearInterval(shuffleInterval);
+                diceContainer.classList.remove('rolling');
+                
+                // Set the final icon based on result (array is 0-indexed, so -1)
+                diceIcon.className = `fa-solid ${diceIcons[finalNumber - 1]}`;
+                document.getElementById('roll-result-text').innerText = `+${finalNumber}`;
+                
+                updateScore(finalNumber);
+                
+                // Logic to handle Turn / Round advancing
+                setTimeout(() => {
+                    document.getElementById('roll-result-text').innerText = "";
+                    isRolling = false;
+                    
+                    if (currentTurn === 'host') {
+                        currentTurn = 'guest'; // Switch to guest
+                        updateTurnUI();
+                    } else {
+                        // Guest just finished, round is over
+                        if (currentRound < 5) {
+                            currentRound++;
+                            document.getElementById('round-num').innerText = currentRound;
+                            currentTurn = 'host';
+                            updateTurnUI();
+                        } else {
+                            determineWinner();
+                        }
+                    }
+                }, 1500); // Small delay to let the user see the result before switching
+
+            }, 2000);
+        }
+
+        function updateScore(points) {
+            scores[currentTurn] += points;
+            document.getElementById(`score-${currentTurn}`).innerText = scores[currentTurn];
+        }
+
+        function determineWinner() {
+            gameActive = false;
+            document.getElementById('status-text').innerText = "GAME OVER!";
+            
+            let winner = 'tie';
+            if (scores.host > scores.guest) winner = 'host';
+            if (scores.guest > scores.host) winner = 'guest';
+
+            setTimeout(() => finalizeGame(winner), 1000);
+        }
+
+        async function finalizeGame(winnerRole) {
+            if (winnerRole === 'tie') {
+                Swal.fire({
+                    title: 'IT\'S A TIE!',
+                    text: `Both scored ${scores.host}. Wagers returned!`,
+                    icon: 'info',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#3b82f6'
+                }).then(() => window.location.replace('index.html'));
+                return;
+            }
+
+            if (myRole === winnerRole) {
+                // Calculation: Total Pot (Wager * 2) * 0.9 (180% of original single wager)
+                const totalPot = wager * 2;
+                const winnings = Math.floor(totalPot * 0.9);
+                
+                // Fire Confetti!
+                confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.6 },
+                    colors: ['#fbbf24', '#3b82f6', '#ffffff']
+                });
+
+                if (currentUser && currentUser.id) {
+                    const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                    if (data) {
+                        await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
+                    }
+                }
+                
+                Swal.fire({
+                    title: '🎉 VICTORY! 🎉',
+                    text: `You scored ${scores[myRole]} and won ${winnings} coins!`,
+                    icon: 'success',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#3b82f6',
+                    confirmButtonText: 'Return to Lobby',
+                    customClass: { popup: 'border border-blue-500/30' }
+                }).then(() => window.location.replace('index.html'));
+
+            } else {
+                Swal.fire({
+                    title: 'DEFEAT 💀',
+                    text: `Opponent won with ${scores[winnerRole]} points.`,
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#ef4444',
+                    confirmButtonText: 'Leave Arena',
+                    customClass: { popup: 'border border-red-500/30' }
+                }).then(() => window.location.replace('index.html'));
+            }
+        }
+
+        // --- CHAT SYSTEM ---
+        function toggleChat() {
+            const container = document.getElementById('chat-input-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value.trim();
+                if (!msg) return;
+                
+                const senderName = document.getElementById(`${myRole}-name`).innerText;
+                window.gameChannel.send({ type: 'broadcast', event: 'chat', payload: { msg, sender: senderName } });
+                showMarquee(`You: ${msg}`);
+                e.target.value = "";
+                toggleChat();
+            }
+        });
+
+        function showMarquee(text) {
+            const container = document.getElementById('marquee-container');
+            const el = document.createElement('div');
+            el.className = 'marquee-text';
+            el.innerText = text;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 8000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

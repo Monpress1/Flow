@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Wallet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; }
+        
+        .credit-card {
+            background: linear-gradient(135deg, #1e293b 0%, #020617 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            height: 220px;
+            transition: transform 0.3s ease;
+        }
+
+        .credit-card::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -10%;
+            width: 150px;
+            height: 150px;
+            background: rgba(59, 130, 246, 0.15);
+            filter: blur(40px);
+            border-radius: 50%;
+        }
+
+        .glass-modal {
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="max-w-md mx-auto min-h-screen flex flex-col">
+
+    <header class="p-6 flex items-center justify-between">
+        <button onclick="window.history.back()" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-900 border border-white/5">
+            <i class="fa-solid fa-chevron-left text-slate-400"></i>
+        </button>
+        <h1 class="font-black text-sm tracking-[0.3em] uppercase opacity-60">Digital Wallet</h1>
+        <div class="w-10"></div> </header>
+
+    <main class="px-6 space-y-8">
+        <div class="credit-card rounded-[2.5rem] p-8 flex flex-col justify-between">
+            
+            <div class="flex items-center gap-4 z-10">
+                <img id="card-pfp" src="" class="w-12 h-12 rounded-2xl border border-white/20 object-cover bg-slate-800 shadow-lg">
+                <div>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Account Holder</p>
+                    <p id="card-name" class="text-sm font-black text-white">Loading...</p>
+                </div>
+            </div>
+
+            <div class="z-10 mt-2">
+                <p class="text-[10px] text-blue-500 font-bold uppercase tracking-[0.2em]">Total Balance</p>
+                <div class="flex items-baseline gap-2">
+                    <span id="balance-val" class="text-5xl font-black tracking-tighter">0</span>
+                    <i class="fa-solid fa-coins text-yellow-500 text-lg"></i>
+                </div>
+            </div>
+
+            <div class="absolute bottom-6 right-8 opacity-80">
+                <img src="flow.png" style="width:50px; height:40px;" alt="Flow" class="h-8 w-auto">
+            </div>
+            
+            <div class="absolute top-8 right-8 w-10 h-8 bg-gradient-to-br from-yellow-600/30 to-yellow-400/10 rounded-md border border-yellow-500/20"></div>
+        </div>
+
+        <button onclick="openDepositModal()" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-900/20 active:scale-[0.98]">
+            <i class="fa-solid fa-plus-circle text-lg"></i>
+            Top Up Wallet
+        </button>
+
+        <section>
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xs font-black uppercase text-slate-500 tracking-widest">Recent Activity</h3>
+                <i class="fa-solid fa-sliders text-slate-700"></i>
+            </div>
+            <div id="history-container" class="space-y-3">
+                </div>
+        </section>
+    </main>
+
+    <div id="deposit-modal" class="fixed inset-0 z-[100] glass-modal flex items-end sm:items-center justify-center p-4 hidden">
+        <div class="w-full max-w-sm bg-slate-900 border border-white/10 rounded-[3rem] p-8 shadow-2xl mb-4">
+            <div class="flex justify-between items-center mb-8">
+                <h3 class="font-black text-2xl tracking-tighter">Top Up</h3>
+                <button onclick="closeDepositModal()" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-slate-500 text-xs"></i>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white/5 p-6 rounded-[2rem] border border-white/5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Enter Amount (₦)</label>
+                    <div class="flex items-center gap-3">
+                        <span class="text-3xl font-black text-blue-500">₦</span>
+                        <input type="number" id="naira-input" oninput="calcCoins()" placeholder="0" class="bg-transparent border-none outline-none text-4xl font-black w-full text-white placeholder:text-slate-800">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between px-4">
+                    <p class="text-xs text-slate-500 font-bold">You will receive:</p>
+                    <div class="flex items-center gap-2">
+                        <span id="coin-preview" class="text-lg font-black text-yellow-500">0</span>
+                        <i class="fa-solid fa-coins text-yellow-500 text-xs"></i>
+                    </div>
+                </div>
+
+                <button onclick="startPayment()" class="w-full bg-white text-black hover:bg-slate-200 py-6 rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95">
+                    Proceed to Pay
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+        const PAYSTACK_PK = 'pk_live_fab019f9df1b6cb89cb32bdef25c7d2c048c63c2';
+
+        let currentUser = null;
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            if (!session) return window.location.replace('auth.html');
+            currentUser = session.user;
+
+            const meta = currentUser.user_metadata;
+            document.getElementById('card-name').innerText = meta.username || 'Flow User';
+            document.getElementById('card-pfp').src = meta.avatar_url || `https://ui-avatars.com/api/?name=${meta.username}&background=0D8ABC&color=fff`;
+
+            fetchData();
+        }
+
+        async function fetchData() {
+            // Get Balance
+            const { data: profile } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+            if (profile) {
+                // Animate balance counting up
+                animateValue("balance-val", 0, profile.coins, 1000);
+            }
+
+            // Get Transactions
+            const { data: txs } = await flowClient.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(10);
+            const container = document.getElementById('history-container');
+            
+            if (!txs || txs.length === 0) {
+                container.innerHTML = `<div class="text-center py-10 opacity-30 text-[10px] font-bold uppercase tracking-widest">No Activity Yet</div>`;
+                return;
+            }
+
+            container.innerHTML = txs.map(t => `
+                <div class="py-4 px-5 bg-white/5 rounded-3xl flex justify-between items-center border border-white/5">
+                    <div class="flex items-center gap-4">
+                        <div class="w-11 h-11 rounded-2xl ${t.type === 'deposit' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'} flex items-center justify-center border border-white/5">
+                            <i class="fa-solid ${t.type === 'deposit' ? 'fa-plus' : 'fa-minus'}"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-black tracking-tight">${t.type === 'deposit' ? 'Wallet Refill' : 'Game Wager'}</p>
+                            <p class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">${new Date(t.created_at).toLocaleDateString()}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-black ${t.type === 'deposit' ? 'text-green-400' : 'text-slate-200'}">
+                            ${t.type === 'deposit' ? '+' : '-'}${t.amount.toLocaleString()}
+                        </p>
+                        <p class="text-[8px] uppercase font-black opacity-40">Coins</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- DEPOSIT LOGIC ---
+        function openDepositModal() { document.getElementById('deposit-modal').classList.remove('hidden'); }
+        function closeDepositModal() { document.getElementById('deposit-modal').classList.add('hidden'); }
+
+        function calcCoins() {
+            const val = document.getElementById('naira-input').value;
+            document.getElementById('coin-preview').innerText = val || 0;
+        }
+
+        function startPayment() {
+            const amount = document.getElementById('naira-input').value;
+            if (!amount || amount < 100) return alert("Minimum deposit is ₦100");
+
+            const handler = PaystackPop.setup({
+                key: PAYSTACK_PK,
+                email: currentUser.email,
+                amount: amount * 100, // Paystack works in Kobo
+                currency: 'NGN',
+                callback: function(res) {
+                    // This triggers once Paystack returns success
+                    processDeposit(amount);
+                },
+                onClose: function() {
+                    console.log('Window closed.');
+                }
+            });
+            handler.openIframe();
+        }
+
+        async function processDeposit(amount) {
+            amount = parseInt(amount);
+            
+            // 1. Fetch current coins directly
+            const { data: p } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+            const currentCoins = p.coins || 0;
+            const newBalance = currentCoins + amount;
+
+            // 2. Update the profile table on the frontend
+            const { error } = await flowClient.from('profiles').update({ coins: newBalance }).eq('id', currentUser.id);
+            
+            if(!error) {
+                // 3. Log the successful transaction
+                await flowClient.from('transactions').insert([{
+                    user_id: currentUser.id,
+                    amount: amount,
+                    type: 'deposit',
+                    status: 'success'
+                }]);
+                
+                closeDepositModal();
+                alert(`Success! Your wallet has been updated.`);
+                fetchData(); // Refresh UI
+            } else {
+                alert("Payment received, but failed to update balance. Contact support.");
+            }
+        }
+
+        function animateValue(id, start, end, duration) {
+            const obj = document.getElementById(id);
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                obj.innerText = Math.floor(progress * (end - start) + start).toLocaleString();
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

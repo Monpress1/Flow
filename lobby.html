@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Arena Lobby</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow-x: hidden; padding-bottom: 100px; }
+        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; }
+        .bet-btn.selected { background: #3b82f6; border-color: #60a5fa; color: white; transform: scale(1.05); transition: all 0.2s; }
+        .location-tag { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    </style>
+</head>
+<body class="max-w-md mx-auto relative min-h-screen">
+
+    <div id="countdown-overlay" class="fixed inset-0 bg-[#020617]/95 backdrop-blur-xl z-[9999] hidden flex-col items-center justify-center">
+        <h2 class="text-blue-500 font-bold uppercase tracking-widest text-sm mb-4">Starting Game In</h2>
+        <div id="countdown-number" class="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(59,130,246,0.5)]">10</div>
+        <p class="text-slate-400 text-xs mt-6"><i class="fa-solid fa-coins text-yellow-400 mr-1"></i> Wager deducted successfully.</p>
+    </div>
+
+    <div id="global-challenge-popup" class="fixed top-0 left-1/2 -translate-x-1/2 w-[90%] mt-4 glass-card p-4 z-[10000] -translate-y-[150%] transition-transform duration-500 border-blue-500/50 border-2">
+        <div class="flex items-center gap-4">
+            <img id="popup-challenger-img" src="" class="w-12 h-12 rounded-full border-2 border-blue-500 object-cover">
+            <div class="flex-1">
+                <p class="text-[10px] text-blue-400 font-bold uppercase tracking-tighter">Incoming Battle</p>
+                <h3 id="popup-challenger-name" class="font-black text-white text-sm">Player</h3>
+                <p class="text-[10px] text-yellow-400 font-bold mt-1">Game: <span id="popup-game-name">Unknown</span></p>
+            </div>
+            <div class="flex gap-2">
+                <button id="btn-decline-challenge" class="w-9 h-9 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center active:scale-90"><i class="fa-solid fa-xmark"></i></button>
+                <button id="btn-accept-challenge" class="w-9 h-9 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 flex items-center justify-center active:scale-90"><i class="fa-solid fa-check"></i></button>
+            </div>
+        </div>
+        <div class="w-full h-1 bg-slate-800 mt-3 rounded-full overflow-hidden">
+            <div id="popup-timer-bar" class="h-full bg-blue-500 w-full"></div>
+        </div>
+    </div>
+
+    <div id="view-lobby" class="block">
+        <header class="p-6 flex items-center justify-between sticky top-0 bg-[#020617]/90 backdrop-blur-md z-40">
+            <button onclick="window.location.href='index.html'" class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/5">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <div class="text-center">
+                <h1 id="lobby-title" class="font-black text-xl tracking-tighter uppercase text-blue-400">Arena</h1>
+                <p id="online-count" class="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Scanning...</p>
+            </div>
+            <div class="w-10 h-10"></div>
+        </header>
+
+        <main class="px-5 space-y-4 mt-2">
+      <a href="private.html">    <button class="w-full bg-slate-800/80 border border-slate-700 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-slate-300 active:scale-95 transition">
+                <i class="fa-solid fa-lock text-slate-500"></i> Play Private Match
+            </button>
+</a>
+            <div class="flex justify-between items-center px-2 mt-6">
+                <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Active Players</h2>
+                <button onclick="fetchOnlinePlayers()" class="text-[10px] bg-blue-600/10 text-blue-400 px-3 py-1.5 rounded-full border border-blue-500/20 font-bold"><i class="fa-solid fa-rotate mr-1"></i> Refresh</button>
+            </div>
+            <div id="players-list" class="grid grid-cols-1 gap-3">
+                </div>
+        </main>
+    </div>
+
+    <div id="view-wager" class="hidden flex-col h-screen">
+        <header class="p-6 text-center pt-8">
+            <h1 id="wager-game-title" class="font-black text-xl tracking-tighter uppercase text-blue-400">Match Setup</h1>
+            <p class="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Mutual Wager Lock-in</p>
+        </header>
+
+        <main class="flex-1 px-6 space-y-6">
+            <div class="flex justify-between items-center glass-card p-6 relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent"></div>
+                <div class="text-center z-10">
+                    <img id="p1-avatar" src="" class="w-16 h-16 rounded-full border-2 border-blue-500 object-cover bg-slate-800 mx-auto">
+                    <p class="text-xs font-bold mt-2">You</p>
+                    <p id="p1-status" class="text-[9px] text-slate-400 uppercase">Selecting...</p>
+                </div>
+                <div class="text-2xl font-black text-slate-700 italic z-10">VS</div>
+                <div class="text-center z-10">
+                    <div id="p2-loading" class="w-16 h-16 rounded-full bg-slate-800 animate-pulse mx-auto flex items-center justify-center border-2 border-slate-700">
+                        <i class="fa-solid fa-user-ninja text-slate-600"></i>
+                    </div>
+                    <img id="p2-avatar" src="" class="w-16 h-16 rounded-full border-2 border-red-500 object-cover bg-slate-800 mx-auto hidden">
+                    <p id="p2-name" class="text-xs font-bold mt-2 text-slate-500">Opponent</p>
+                    <p id="p2-status" class="text-[9px] text-slate-400 uppercase">Waiting...</p>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Your Balance</span>
+                    <span class="text-xs font-bold text-yellow-500"><i class="fa-solid fa-coins mr-1"></i> <span id="wager-balance">0</span></span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="selectWager(100)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">100</button>
+                    <button onclick="selectWager(500)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">500</button>
+                    <button onclick="selectWager(1000)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">1K</button>
+                </div>
+                <button id="lock-btn" onclick="toggleLock()" class="w-full bg-slate-800 py-4 rounded-xl font-bold border border-slate-700 active:scale-95 transition">
+                    Lock In Wager
+                </button>
+            </div>
+            <div id="status-msg" class="text-center text-xs font-bold text-orange-400">Waiting for opponent...</div>
+        </main>
+
+        <div class="p-6 pb-12">
+            <button id="start-game-btn" onclick="startGame()" class="w-full bg-gradient-to-r from-green-500 to-emerald-400 py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg shadow-green-900/20 active:scale-95 transition-all opacity-50 pointer-events-none">
+                Awaiting Lock
+            </button>
+            <button onclick="cancelMatch()" class="w-full text-center text-slate-500 text-[10px] font-bold uppercase mt-4">Cancel Match</button>
+        </div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        let currentUser = null;
+        let onlineUsers = [];
+        
+        // Global match variables
+        let activeMatchId = null;
+        let oppId = null;
+        let myRole = null;
+        let currentGame = "game"; // Default fallback
+        
+        let matchChannel = null;
+        let globalAlertChannel = null;
+      let myWager = 0;
+let isLocked = false;
+let oppWager = 0;
+let oppLocked = false;
+let currentBalance = 0; 
+
+        async function initPage() {
+    const { data: { session } } = await flowClient.auth.getSession();
+    if (!session) return window.location.replace('auth.html');
+    currentUser = session.user;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Explicitly grab the game name and don't let it be empty
+    const gameName = urlParams.get('game');
+    if (gameName) {
+        currentGame = gameName;
+    }
+
+    activeMatchId = urlParams.get('match');
+    oppId = urlParams.get('opp');
+    myRole = urlParams.get('role');
+
+    // Update UI titles based on the actual game
+    document.getElementById('lobby-title').innerText = `Arena: ${currentGame.toUpperCase()}`;
+    document.getElementById('wager-game-title').innerText = `Setup: ${currentGame.toUpperCase()}`;
+
+    initGlobalChallenges(flowClient, currentUser, `Lobby: ${currentGame.toUpperCase()}`);
+
+    if (activeMatchId && oppId) {
+        // Pass the currentGame variable here to ensure it's locked in
+        transitionToWagerView(activeMatchId, oppId, myRole, currentGame);
+    } else {
+        setupLobbyList();
+    }
+}
+
+        async function initGlobalChallenges(supabase, user, pageName) {
+            const heartbeat = async () => {
+                await supabase.from('profiles').update({ 
+                    last_seen: new Date().toISOString(),
+                    current_location: pageName 
+                }).eq('id', user.id);
+            };
+            heartbeat();
+            setInterval(heartbeat, 30000);
+
+            globalAlertChannel = supabase.channel('global_alerts');
+            globalAlertChannel
+                .on('broadcast', { event: 'incoming_challenge' }, ({ payload }) => {
+                    if (payload.targetId === user.id) showChallengePopup(payload);
+                })
+                .on('broadcast', { event: 'challenge_response' }, ({ payload }) => {
+                    if (payload.challengerId === user.id) {
+                        if (payload.accepted) {
+                            transitionToWagerView(payload.matchId, payload.targetId, 'host', payload.game);
+                        } else {
+                            window.dispatchEvent(new CustomEvent('challengeDeclined', { detail: payload.targetId }));
+                        }
+                    }
+                })
+                .subscribe();
+        }
+
+        async function setupLobbyList() {
+            await fetchOnlinePlayers();
+            setInterval(fetchOnlinePlayers, 10000);
+            window.onfocus = fetchOnlinePlayers;
+        }
+
+        async function fetchOnlinePlayers() {
+            if (!currentUser) return;
+            const threshold = new Date(Date.now() - 60000).toISOString();
+            const { data, error } = await flowClient
+                .from('profiles')
+                .select('id, username, avatar_url, current_location')
+                .gt('last_seen', threshold)
+                .neq('id', currentUser.id);
+
+            if (error) return console.error("Fetch Error:", error);
+            onlineUsers = data;
+            document.getElementById('online-count').innerText = `${onlineUsers.length} Online`;
+            renderPlayers();
+        }
+
+        function renderPlayers() {
+            const list = document.getElementById('players-list');
+            if (onlineUsers.length === 0) {
+                list.innerHTML = `<div class="glass-card p-10 text-center border-dashed border-white/10 text-slate-500 text-xs font-bold uppercase">No rivals found...</div>`;
+                return;
+            }
+            
+            // Replaced placeholders. Now explicitly uses u.avatar_url or an empty src to fallback to standard styling if missing.
+            list.innerHTML = onlineUsers.map(u => `
+                <div class="glass-card p-3 flex items-center justify-between border-white/5">
+                    <div class="flex items-center gap-3">
+                        <div class="relative">
+                            <img src="${u.avatar_url || ''}" alt="" class="w-12 h-12 rounded-full border-2 border-slate-800 object-cover bg-slate-900">
+                            <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#020617] rounded-full"></span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-white">${u.username || 'Player'}</p>
+                            <span class="location-tag text-[9px] px-2 py-0.5 rounded-md inline-block font-bold uppercase">${u.current_location || 'Exploring'}</span>
+                        </div>
+                    </div>
+                    <button id="btn-${u.id}" onclick="sendChallenge('${u.id}')" class="w-10 h-10 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20 flex items-center justify-center transition active:scale-90">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function sendChallenge(targetPlayerId) {
+            const btn = document.getElementById(`btn-${targetPlayerId}`);
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+            btn.disabled = true;
+
+            const matchId = `match_${Math.random().toString(36).substr(2, 9)}`;
+            const meta = currentUser.user_metadata;
+
+            await globalAlertChannel.send({
+                type: 'broadcast',
+                event: 'incoming_challenge',
+                payload: {
+                    challengerId: currentUser.id,
+                    challengerName: meta.username || 'Rival',
+                    challengerAvatar: meta.avatar_url || '',
+                    targetId: targetPlayerId,
+                    matchId: matchId,
+                    game: currentGame // Now passing the game name in the invite!
+                }
+            });
+
+            window.addEventListener('challengeDeclined', function handler(e) {
+                if (e.detail === targetPlayerId) {
+                    btn.innerHTML = `<i class="fa-solid fa-xmark text-red-500"></i>`;
+                    setTimeout(() => { btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i>`; btn.disabled = false; }, 2000);
+                    window.removeEventListener('challengeDeclined', handler);
+                }
+            });
+        }
+
+        // --- POPUP LOGIC ---
+        let activeChallenge = null;
+        function showChallengePopup(payload) {
+            activeChallenge = payload;
+            const popup = document.getElementById('global-challenge-popup');
+            document.getElementById('popup-challenger-name').innerText = payload.challengerName;
+            document.getElementById('popup-game-name').innerText = (payload.game || "Game").toUpperCase();
+            document.getElementById('popup-challenger-img').src = payload.challengerAvatar || '';
+            
+            popup.classList.replace('-translate-y-[150%]', 'translate-y-0');
+            document.getElementById('popup-timer-bar').style.width = '100%';
+            setTimeout(() => { document.getElementById('popup-timer-bar').style.transition = 'width 10s linear'; document.getElementById('popup-timer-bar').style.width = '0%'; }, 50);
+
+            const timeout = setTimeout(() => handleChallengeResponse(false), 10000);
+            
+            document.getElementById('btn-accept-challenge').onclick = () => { clearTimeout(timeout); handleChallengeResponse(true); };
+            document.getElementById('btn-decline-challenge').onclick = () => { clearTimeout(timeout); handleChallengeResponse(false); };
+        }
+
+        async function handleChallengeResponse(accepted) {
+            document.getElementById('global-challenge-popup').classList.replace('translate-y-0', '-translate-y-[150%]');
+            if (!activeChallenge) return;
+
+            await globalAlertChannel.send({
+                type: 'broadcast',
+                event: 'challenge_response',
+                payload: { 
+                    challengerId: activeChallenge.challengerId, 
+                    targetId: currentUser.id, 
+                    accepted, 
+                    matchId: activeChallenge.matchId,
+                    game: activeChallenge.game
+                }
+            });
+
+            if (accepted) transitionToWagerView(activeChallenge.matchId, activeChallenge.challengerId, 'guest', activeChallenge.game);
+            activeChallenge = null;
+        }
+
+        // --- WAGER VIEW & MATCH LOGIC ---
+        async function transitionToWagerView(matchId, opponentId, role, gameName) {
+    document.getElementById('view-lobby').classList.replace('block', 'hidden');
+    document.getElementById('view-wager').classList.replace('hidden', 'flex');
+    
+    activeMatchId = matchId;
+    oppId = opponentId;
+    myRole = role;
+    
+    // CRITICAL: Update the global currentGame variable with the name passed from the challenge
+    if (gameName) {
+        currentGame = gameName;
+    }
+
+    document.getElementById('wager-game-title').innerText = `Setup: ${currentGame.toUpperCase()}`;
+    
+    // 1. Fetch data from Supabase
+const { data, error } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+
+// 2. Store in the global variable so toggleLock() can see it
+currentBalance = data ? data.coins : 0;
+
+// 3. Update the UI
+document.getElementById('wager-balance').innerText = currentBalance.toLocaleString();
+document.getElementById('p1-avatar').src = currentUser.user_metadata.avatar_url || '';
+
+if (error) console.error("Error fetching balance:", error);
+
+    matchChannel = flowClient.channel(matchId);
+    matchChannel
+        .on('broadcast', { event: 'wager_update' }, ({ payload }) => {
+            if (payload.userId !== currentUser.id) {
+                oppWager = payload.wager;
+                oppLocked = payload.locked;
+                
+                const p2Img = document.getElementById('p2-avatar');
+                p2Img.src = payload.avatar || '';
+                p2Img.classList.remove('hidden');
+                document.getElementById('p2-loading').classList.add('hidden');
+                document.getElementById('p2-name').innerText = payload.username;
+                
+                const oppStatus = document.getElementById('p2-status');
+                oppStatus.innerText = oppLocked ? `LOCKED: ${oppWager}` : `Selecting...`;
+                oppStatus.className = oppLocked ? "text-[10px] text-green-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
+                
+                evaluateMatchState();
+            }
+        })
+        .on('broadcast', { event: 'start_countdown' }, ({payload}) => {
+            if (myRole === 'guest') {
+                // The host sends the game name in the payload, so the guest stays synced
+                currentGame = payload.gameName;
+                executeCountdown();
+            }
+        })
+        .subscribe((status) => { if(status === 'SUBSCRIBED') syncWagerState(); });
+}
+
+        function selectWager(amt) {
+            if(isLocked) return;
+            myWager = amt;
+            document.querySelectorAll('.bet-btn').forEach(b => {
+                b.classList.remove('selected');
+                if(parseInt(b.innerText.replace('K','000')) === amt) b.classList.add('selected');
+            });
+            syncWagerState();
+        }
+
+        function toggleLock() {
+    if (myWager === 0) return alert("Select a wager!");
+    
+    // NEW: Check for insufficient funds before locking
+    if (!isLocked && myWager > currentBalance) {
+        const msg = document.getElementById('status-msg');
+        msg.innerText = "INSUFFICIENT FUNDS!";
+        msg.className = "text-center text-xs font-black text-red-500 animate-pulse uppercase tracking-widest";
+        
+        // Deselect the invalid wager to force them to pick again
+        myWager = 0;
+        document.querySelectorAll('.bet-btn').forEach(b => b.classList.remove('selected'));
+        return; 
+    }
+
+    isLocked = !isLocked;
+    const btn = document.getElementById('lock-btn');
+    const status = document.getElementById('p1-status');
+    
+    btn.innerText = isLocked ? "Unlock Wager" : "Lock In Wager";
+    status.innerText = isLocked ? `LOCKED: ${myWager}` : `Selecting...`;
+    status.className = isLocked ? "text-[10px] text-blue-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
+
+    syncWagerState();
+    evaluateMatchState();
+}
+
+
+        function syncWagerState() {
+            if (!matchChannel) return;
+            matchChannel.send({
+                type: 'broadcast',
+                event: 'wager_update',
+                payload: {
+                    userId: currentUser.id,
+                    username: currentUser.user_metadata.username || 'Player',
+                    wager: myWager,
+                    locked: isLocked,
+                    avatar: currentUser.user_metadata.avatar_url
+                }
+            });
+        }
+
+        function evaluateMatchState() {
+            const startBtn = document.getElementById('start-game-btn');
+            const msg = document.getElementById('status-msg');
+
+            // Only show the Start Game button functionality to the host
+            if (myRole !== 'host') {
+                startBtn.innerText = "Waiting for Host";
+            }
+
+            if (isLocked && oppLocked) {
+                if (myWager === oppWager) {
+                    msg.innerText = "Match Confirmed!";
+                    msg.className = "text-center text-xs font-bold text-green-400";
+                    
+                    if (myRole === 'host') {
+                        startBtn.innerText = "START GAME";
+                        startBtn.classList.remove('opacity-50', 'pointer-events-none');
+                    }
+                } else {
+                    msg.innerText = "Wagers must match!";
+                    msg.className = "text-center text-xs font-bold text-red-400";
+                    startBtn.classList.add('opacity-50', 'pointer-events-none');
+                }
+            } else {
+                msg.innerText = "Waiting for both to lock...";
+                startBtn.classList.add('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        function startGame() {
+            // Tell the guest that we are starting
+            matchChannel.send({ type: 'broadcast', event: 'start_countdown', payload: { gameName: currentGame } });
+            executeCountdown();
+        }
+
+        async function deductCoinBalance() {
+            try {
+                // Fetch the absolute current balance directly to avoid local cache errors
+                const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                const currentCoins = data ? data.coins : 0;
+                const newBalance = currentCoins - myWager;
+                
+                // Perform the deduction
+                await flowClient.from('profiles').update({ coins: newBalance }).eq('id', currentUser.id);
+                console.log("Coins deducted successfully pre-match.");
+            } catch (err) {
+                console.error("Failed to deduct coins", err);
+            }
+        }
+
+        async function executeCountdown() {
+    await deductCoinBalance();
+
+    const overlay = document.getElementById('countdown-overlay');
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    
+    let count = 10;
+    document.getElementById('countdown-number').innerText = count;
+    
+    const timer = setInterval(() => {
+        count--;
+        document.getElementById('countdown-number').innerText = count;
+        
+        if(count <= 0) {
+            clearInterval(timer);
+            const hostId = myRole === 'host' ? currentUser.id : oppId;
+            const guestId = myRole === 'guest' ? currentUser.id : oppId;
+            
+            // If currentGame is "towers", this goes to towers.html
+            // If currentGame is "dice", this goes to dice.html
+            const targetPage = `${currentGame}.html`;
+            
+            console.log(`Redirecting to: ${targetPage}`);
+            window.location.replace(`${targetPage}?match=${activeMatchId}&wager=${myWager}&host=${hostId}&guest=${guestId}`);
+        }
+    }, 1000);
+}
+
+        function cancelMatch() {
+            location.reload();
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>

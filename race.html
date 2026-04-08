@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flow | Turbo Racer</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
+        
+        #game-container { 
+            position: relative; 
+            width: 100vw; 
+            height: 60vh; 
+            max-width: 400px; 
+            margin: 0 auto; 
+            background: #0f172a;
+            border-left: 2px solid rgba(255,255,255,0.1);
+            border-right: 2px solid rgba(255,255,255,0.1);
+            overflow: hidden;
+        }
+
+        .road-line {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            animation: scroll-road 0.4s linear infinite;
+        }
+
+        @keyframes scroll-road { from { top: -100px; } to { top: 100%; } }
+
+        #joystick-wrapper { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; background: rgba(255,255,255,0.05); border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); z-index: 40; }
+        #joystick-stick { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.8); border-radius: 50%; top: 35px; left: 35px; box-shadow: 0 0 20px rgba(255,255,255,0.2); transition: transform 0.05s linear; }
+        
+        canvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 20; }
+        .glass-panel { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen">
+
+    <div id="rules-overlay" class="fixed inset-0 z-[100] glass-panel flex flex-col items-center justify-center p-6 transition-opacity duration-500">
+        <i class="fa-solid fa-car-side text-5xl text-blue-500 mb-6 animate-bounce"></i>
+        <h1 class="text-3xl font-black text-white uppercase mb-4 text-center">Turbo Racer</h1>
+        <div class="bg-slate-800/80 border border-white/10 p-6 rounded-3xl w-full max-w-xs shadow-2xl">
+            <ul class="text-sm space-y-4 font-bold text-slate-200">
+                <li class="flex items-center gap-3"><i class="fa-solid fa-arrows-left-right text-blue-400 text-lg"></i> Dodge traffic with the joystick.</li>
+                <li class="flex items-center gap-3"><i class="fa-solid fa-ghost text-slate-400 text-lg"></i> Watch the ghost car (opponent).</li>
+                <li class="flex items-center gap-3"><i class="fa-solid fa-skull text-red-500 text-lg"></i> One crash = Game Over.</li>
+                <li class="flex items-center gap-3"><i class="fa-solid fa-coins text-yellow-500 text-lg"></i> Winner takes 180% pot!</li>
+            </ul>
+        </div>
+        <p id="rules-countdown" class="mt-8 text-6xl font-black text-blue-500">READY</p>
+    </div>
+
+    <header class="p-4 flex justify-between items-center bg-slate-900/80 border-b border-white/5 relative z-30">
+        <div class="flex-1">
+            <h2 class="text-[10px] font-black uppercase text-blue-400">You</h2>
+            <p class="text-sm font-bold" id="p1-status">READY</p>
+        </div>
+        <div class="flex-1 text-center">
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Survival</p>
+            <h2 class="text-xl font-black text-white"><span id="time-val">0</span>s</h2>
+        </div>
+        <div class="flex-1 text-right">
+            <h2 class="text-[10px] font-black uppercase text-red-400">Enemy</h2>
+            <p class="text-sm font-bold" id="p2-status">WAITING</p>
+        </div>
+    </header>
+
+    <div id="game-container">
+        <div class="road-line" style="top: 0%"></div>
+        <div class="road-line" style="top: 33%"></div>
+        <div class="road-line" style="top: 66%"></div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="status-msg" class="text-center mt-6 text-sm font-bold text-slate-400 uppercase tracking-widest animate-pulse">Syncing Players...</div>
+
+    <div id="joystick-wrapper">
+        <div id="joystick-stick"></div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'race_arena_1';
+        const hostId = params.get('host'); 
+        const wager = parseInt(params.get('wager')) || 100;
+
+        let currentUser, myRole, gameChannel;
+        const sessionToken = Math.random().toString(36).substring(7);
+        
+        let p1 = { x: 180, y: 0, alive: true, color: '#3b82f6' };
+        let p2 = { x: 180, y: 0, alive: true, color: '#ef4444' };
+        
+        let obstacles = [];
+        let gameActive = false;
+        let survivalTime = 0;
+        let speed = 6;
+        let spawnInterval;
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('game-container');
+
+        async function init() {
+            const { data: { session } } = await flowClient.auth.getSession();
+            currentUser = session ? session.user : { id: 'anon_' + sessionToken };
+            myRole = currentUser.id === hostId ? 'host' : 'guest';
+
+            resize();
+            p1.y = canvas.height - 80;
+            p2.y = canvas.height - 80;
+            p1.x = (canvas.width / 2) - 20;
+            p2.x = (canvas.width / 2) - 20;
+
+            setupRealtime();
+
+            let count = 3;
+            const counterEl = document.getElementById('rules-countdown');
+            const interval = setInterval(() => {
+                count--;
+                if(count > 0) counterEl.innerText = count;
+                else {
+                    clearInterval(interval);
+                    document.getElementById('rules-overlay').style.opacity = '0';
+                    setTimeout(() => {
+                        document.getElementById('rules-overlay').style.display = 'none';
+                        if(myRole === 'host') startRace();
+                    }, 500);
+                }
+            }, 1000);
+
+            requestAnimationFrame(render);
+        }
+
+        function resize() { canvas.width = container.offsetWidth; canvas.height = container.offsetHeight; }
+
+        function setupRealtime() {
+            gameChannel = flowClient.channel(matchId, { config: { presence: { key: currentUser.id + "_" + sessionToken } } });
+
+            gameChannel
+                .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+                    if (gameActive && leftPresences.length > 0) handleWin("Opponent disconnected!");
+                })
+                .on('broadcast', { event: 'move' }, ({payload}) => {
+                    if(payload.uid !== (currentUser.id + "_" + sessionToken)) p2.x = payload.x;
+                })
+                .on('broadcast', { event: 'race_start' }, () => {
+                    gameActive = true;
+                    document.getElementById('status-msg').innerText = "RACE!";
+                    document.getElementById('p2-status').innerText = "RACING";
+                    setInterval(() => { if(gameActive) { survivalTime++; document.getElementById('time-val').innerText = survivalTime; speed += 0.08; } }, 1000);
+                })
+                .on('broadcast', { event: 'spawn' }, ({payload}) => {
+                    obstacles.push({ x: payload.x, y: -80, width: 45, height: 80 });
+                })
+                .on('broadcast', { event: 'death' }, ({payload}) => {
+                    if(payload.uid !== (currentUser.id + "_" + sessionToken)) {
+                        p2.alive = false;
+                        document.getElementById('p2-status').innerText = "CRASHED";
+                        checkRaceEnd();
+                    }
+                })
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') await gameChannel.track({ online_at: new Date().toISOString() });
+                });
+        }
+
+        function startRace() {
+            gameChannel.send({type:'broadcast', event:'race_start'});
+            gameActive = true;
+            document.getElementById('p1-status').innerText = "RACING";
+            spawnInterval = setInterval(() => {
+                if(!gameActive) return;
+                const laneX = [canvas.width*0.2, canvas.width*0.5, canvas.width*0.8][Math.floor(Math.random()*3)];
+                const finalX = laneX - 22;
+                gameChannel.send({type:'broadcast', event:'spawn', payload:{ x: finalX }});
+                obstacles.push({ x: finalX, y: -80, width: 45, height: 80 });
+            }, 1000);
+        }
+
+        let joystick = { active: false, x: 0 };
+        const stick = document.getElementById('joystick-stick');
+        document.addEventListener('touchstart', e => { if(e.target.closest('#joystick-wrapper')) joystick.active = true; });
+        document.addEventListener('touchmove', e => {
+            if(!joystick.active) return;
+            const wrap = document.getElementById('joystick-wrapper').getBoundingClientRect();
+            const touch = e.touches[0];
+            let dx = touch.clientX - (wrap.left + 60);
+            if(Math.abs(dx) > 40) dx = 40 * Math.sign(dx);
+            stick.style.transform = `translateX(${dx}px)`;
+            joystick.x = dx / 40;
+        });
+        document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = `translateX(0)`; joystick.x = 0; });
+
+        function update() {
+            if(!gameActive || !p1.alive) return;
+            if(joystick.active) {
+                p1.x += joystick.x * 8;
+                if(p1.x < 5) p1.x = 5;
+                if(p1.x > canvas.width - 45) p1.x = canvas.width - 45;
+            }
+            obstacles.forEach((obs, index) => {
+                obs.y += speed;
+                if(p1.x < obs.x + obs.width && p1.x + 40 > obs.x && p1.y < obs.y + obs.height && p1.y + 70 > obs.y) {
+                    p1.alive = false;
+                    gameChannel.send({type:'broadcast', event:'death', payload:{uid: currentUser.id + "_" + sessionToken}});
+                    document.getElementById('p1-status').innerText = "CRASHED";
+                    checkRaceEnd();
+                }
+                if(obs.y > canvas.height + 100) obstacles.splice(index, 1);
+            });
+            gameChannel.send({ type: 'broadcast', event: 'move', payload: { uid: currentUser.id + "_" + sessionToken, x: p1.x } });
+        }
+
+        function checkRaceEnd() {
+            if(!p1.alive && !p2.alive) handleLoss("Tie! Both crashed.");
+            else if(!p1.alive) handleLoss("You crashed!");
+            else if(!p2.alive) handleWin("You outlasted them!");
+        }
+
+        async function handleWin(msg) {
+            if(!gameActive) return;
+            gameActive = false;
+            clearInterval(spawnInterval);
+
+            // --- REWARD LOGIC FROM COIN FLIP ---
+            const totalPot = wager * 2;
+            const winnings = Math.floor(totalPot * 0.9); // 180% of original wager
+
+            confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#fbbf24', '#3b82f6', '#ffffff'] });
+
+            if(currentUser.id && !currentUser.id.startsWith('anon_')) {
+                const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                if (data) {
+                    await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
+                }
+            }
+
+            Swal.fire({
+                title: '🎉 VICTORY! 🎉',
+                text: `${msg} You won ${winnings} coins!`,
+                icon: 'success',
+                background: '#0f172a',
+                color: '#ffffff',
+                confirmButtonColor: '#3b82f6',
+                confirmButtonText: 'Return Home'
+            }).then(() => window.location.replace('index.html'));
+        }
+
+        function handleLoss(msg) {
+            if(!gameActive) return;
+            gameActive = false;
+            clearInterval(spawnInterval);
+            Swal.fire({
+                title: 'DEFEAT 💀',
+                text: msg,
+                icon: 'error',
+                background: '#0f172a',
+                color: '#ffffff',
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Leave Arena'
+            }).then(() => window.location.replace('index.html'));
+        }
+
+        function drawCar(x, y, color, isGhost = false) {
+            ctx.save();
+            ctx.globalAlpha = isGhost ? 0.3 : 1.0;
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.roundRect(x, y, 40, 70, 10); ctx.fill();
+            ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x + 5, y + 10, 30, 15);
+            ctx.restore();
+        }
+
+        function drawObstacle(obs) {
+            ctx.fillStyle = "#334155";
+            ctx.beginPath(); ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 8); ctx.fill();
+            ctx.fillStyle = "#fbbf24"; ctx.fillRect(obs.x, obs.y + 10, obs.width, 5);
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            update();
+            obstacles.forEach(drawObstacle);
+            if(p2.alive) drawCar(p2.x, p2.y, p2.color, true); 
+            if(p1.alive) drawCar(p1.x, p1.y, p1.color, false);
+            requestAnimationFrame(render);
+        }
+
+        window.addEventListener('resize', resize);
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
