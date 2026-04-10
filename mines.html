@@ -217,11 +217,11 @@
                 if(!gameActive) return;
                 let idx = getRandomEmptyTile();
                 if(idx !== null) {
-                    let duration = 2000 + Math.random() * 2000; // Bombs last 2-4 seconds
+                    let duration = 700 + Math.random() * 700; // Bombs last 2-4 seconds
                     gameChannel.send({type:'broadcast', event:'spawn', payload:{type:'bomb', idx, duration}});
                     handleSpawn({type:'bomb', idx, duration});
                 }
-            }, 2000);
+            }, 4000);
         }
 
         function getRandomEmptyTile() {
@@ -380,7 +380,7 @@
         // --- RENDER ---
         function drawPlayer(x, y, angle, isWalking, isAlive, color) {
             ctx.save(); ctx.translate(x, y);
-            if (!isAlive) { ctx.font = '24px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("💀", 0, 0); ctx.restore(); return; }
+            if (!isAlive) { ctx.font = '24px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("💥", 0, 0); ctx.restore(); return; }
             ctx.rotate(angle);
             let swing = isWalking ? Math.sin(Date.now() / 80) * 10 : 0; 
             ctx.fillStyle = color;

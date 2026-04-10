@@ -133,22 +133,28 @@
             </h2>
             <div class="gliding-container" id="slider">
                 <div class="gliding-track" id="slider-track">
-                    <div class="featured-card" style="background-image: url('f1.jpg');">
+                    <div class="featured-card" style="background-image: url('tank.jpg');">
                         <div class="featured-overlay">
-                            <h3 class="text-xl font-black">CRASH</h3>
-                            <button onclick="playGame('crash')" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
+                            <h3 class="text-xl font-black">Tank Shooter</h3>
+                            
+                            <p style="color:#ffbfea; font-size:11px;"><br> multiplayer Tank Shooter</p>
+                            <button onclick="playGame('shooter')" style="width:87px; margin-left:60%;" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
                         </div>
                     </div>
                     <div class="featured-card" style="background-image: url('f2.jpg');">
                         <div class="featured-overlay">
                             <h3 class="text-xl font-black">TILES</h3>
-                            <button onclick="playGame('tiles')" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
+                            
+                           <p style="color:#6afff5; font-size:11px;"><br> Memory  Tiles</p>
+                            <button onclick="playGame('tiles')" style="width:87px; margin-left:60%;" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
+                            
                         </div>
                     </div>
-                    <div class="featured-card" style="background-image: url('p2.jpg');">
+                    <div class="featured-card" style="background-image: url('mine.png');">
                         <div class="featured-overlay">
                             <h3 class="text-xl font-black">MINES</h3>
-                            <button onclick="playGame('mines')" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
+                            <p style="color:#ff2bc7; font-size:11px;"><br> Escape the land mines</p>
+                            <button onclick="playGame('mines')" style="width:87px; margin-left:60%;" class="bg-white/20 px-4 py-1.5 rounded-lg text-xs font-bold border border-white/10 mt-2">PLAY</button>
                         </div>
                     </div>
                 </div>
@@ -174,16 +180,20 @@
         </section>
 
         <section>
-            <h2 class="text-lg font-bold mb-4">Casual</h2>
+            <h2 class="text-lg font-bold mb-4">Thrilling</h2>
             <div class="grid grid-cols-3 gap-3">
                 <div onclick="playGame('tap')" class="game-card h-28" style="background-image: url('c1.jpg');">
                     <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[90%] bg-black/40 backdrop-blur-md py-1 rounded-full text-center text-[10px] font-bold">Tap Tap</div>
                 </div>
-                <div onclick="playGame('race')" class="game-card h-28" style="background-image: url('c2.jpg');">
+                <div onclick="playGame('race')" class="game-card h-28" style="background-image: url('c2.png');">
                     <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[90%] bg-black/40 backdrop-blur-md py-1 rounded-full text-center text-[10px] font-bold">Car Race</div>
                 </div>
-                <div onclick="playGame('mole')" class="game-card h-28" style="background-image: url('c3.png');">
-                    <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[90%] bg-black/40 backdrop-blur-md py-1 rounded-full text-center text-[10px] font-bold">Mole</div>
+                
+                <div onclick="playGame('shooter')" class="game-card h-28" style="background-image: url('tank.jpg');">
+                    <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[90%] bg-black/40 backdrop-blur-md py-1 rounded-full text-center text-[10px] font-bold">tank-shooter</div>
+                </div>
+                <div onclick="playGame('tic-tac-toe')" class="game-card h-28" style="background-image: url('xno.jpg');">
+                    <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[90%] bg-black/40 backdrop-blur-md py-1 rounded-full text-center text-[10px] font-bold">tic-tac-toe</div>
                 </div>
             </div>
         </section>

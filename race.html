@@ -180,31 +180,33 @@
         }
 
         function startRace() {
-            gameChannel.send({type:'broadcast', event:'race_start'});
-            gameActive = true;
-            document.getElementById('p1-status').innerText = "RACING";
-            spawnInterval = setInterval(() => {
-                if(!gameActive) return;
-                const laneX = [canvas.width*0.2, canvas.width*0.5, canvas.width*0.8][Math.floor(Math.random()*3)];
-                const finalX = laneX - 22;
-                gameChannel.send({type:'broadcast', event:'spawn', payload:{ x: finalX }});
-                obstacles.push({ x: finalX, y: -80, width: 45, height: 80 });
-            }, 1000);
-        }
+    gameChannel.send({type:'broadcast', event:'race_start'});
+    gameActive = true;
+    document.getElementById('p1-status').innerText = "RACING";
+    
+    // Changed from 1000 to 2000 to reduce car frequency
+    spawnInterval = setInterval(() => {
+        if(!gameActive) return;
+        const laneX = [canvas.width*0.2, canvas.width*0.5, canvas.width*0.8][Math.floor(Math.random()*3)];
+        const finalX = laneX - 22;
+        gameChannel.send({type:'broadcast', event:'spawn', payload:{ x: finalX }});
+        obstacles.push({ x: finalX, y: -80, width: 45, height: 80 });
+    }, 2400); 
+}
 
-        let joystick = { active: false, x: 0 };
-        const stick = document.getElementById('joystick-stick');
-        document.addEventListener('touchstart', e => { if(e.target.closest('#joystick-wrapper')) joystick.active = true; });
-        document.addEventListener('touchmove', e => {
-            if(!joystick.active) return;
-            const wrap = document.getElementById('joystick-wrapper').getBoundingClientRect();
-            const touch = e.touches[0];
-            let dx = touch.clientX - (wrap.left + 60);
-            if(Math.abs(dx) > 40) dx = 40 * Math.sign(dx);
-            stick.style.transform = `translateX(${dx}px)`;
-            joystick.x = dx / 40;
-        });
-        document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = `translateX(0)`; joystick.x = 0; });
+let joystick = { active: false, x: 0 };
+const stick = document.getElementById('joystick-stick');
+document.addEventListener('touchstart', e => { if(e.target.closest('#joystick-wrapper')) joystick.active = true; });
+document.addEventListener('touchmove', e => {
+    if(!joystick.active) return;
+    const wrap = document.getElementById('joystick-wrapper').getBoundingClientRect();
+    const touch = e.touches[0];
+    let dx = touch.clientX - (wrap.left + 60);
+    if(Math.abs(dx) > 40) dx = 40 * Math.sign(dx);
+    stick.style.transform = `translateX(${dx}px)`;
+    joystick.x = dx / 40;
+});
+document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = `translateX(0)`; joystick.x = 0; });
 
         function update() {
             if(!gameActive || !p1.alive) return;

@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Tic-Tac-Toe Arena</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: manipulation; }
+        
+        /* Avatar Styling */
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1e293b;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            border: 3px solid transparent;
+        }
+        .active-host .player-avatar {
+            border-color: #3b82f6;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+        }
+        .active-guest .player-avatar {
+            border-color: #f43f5e;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.6);
+        }
+
+        /* Tic-Tac-Toe Grid */
+        .cell {
+            background: #0f172a;
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            font-weight: 900;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+        .cell:active { transform: scale(0.95); }
+        .cell.x-mark { color: #3b82f6; text-shadow: 0 0 20px rgba(59,130,246,0.6); border-color: rgba(59,130,246,0.2); }
+        .cell.o-mark { color: #f43f5e; text-shadow: 0 0 20px rgba(244,63,94,0.6); border-color: rgba(244,63,94,0.2); }
+        .cell.winning-cell { animation: pulseWin 1s infinite; }
+
+        @keyframes pulseWin {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); background: rgba(255,255,255,0.1); }
+        }
+
+        /* Marquee Chat */
+        #marquee-container {
+            position: fixed; top: 130px; width: 100%; pointer-events: none;
+            overflow: hidden; white-space: nowrap; z-index: 50;
+        }
+        .marquee-text {
+            display: inline-block; animation: marquee 6s linear forwards;
+            font-weight: 800; font-size: 1.1rem; color: #cbd5e1; text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            background: rgba(15, 23, 42, 0.8); padding: 4px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        @keyframes marquee {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+
+        /* SweetAlert Customization */
+        .swal2-popup { border-radius: 1.5rem !important; }
+        .swal2-title { font-weight: 900 !important; letter-spacing: -0.025em; }
+    </style>
+</head>
+<body class="max-w-md mx-auto flex flex-col h-screen p-6 relative">
+
+    <!-- Header / Scoreboard -->
+    <div class="flex justify-between items-end bg-slate-900/80 backdrop-blur-md p-4 rounded-3xl border border-white/5 relative z-10 shadow-2xl">
+        <div id="host-section" class="flex flex-col items-center gap-1 active-host transition-all">
+            <img id="host-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="host-name" class="text-[10px] font-bold text-blue-400 uppercase w-20 text-center truncate">Host</p>
+            <h2 id="score-host" class="text-3xl font-black text-blue-400">0</h2>
+        </div>
+        
+        <div class="text-center pb-2">
+            <p class="text-xs font-black text-slate-500 italic">ROUND <span id="round-num">1</span>/3</p>
+            <div class="bg-yellow-500/10 px-3 py-1 rounded-full border border-yellow-500/20 mt-1">
+                <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Pot: <span id="display-pot">0</span></p>
+            </div>
+        </div>
+        
+        <div id="guest-section" class="flex flex-col items-center gap-1 transition-all">
+            <img id="guest-pfp" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="player-avatar">
+            <p id="guest-name" class="text-[10px] font-bold text-rose-400 uppercase w-20 text-center truncate">Waiting</p>
+            <h2 id="score-guest" class="text-3xl font-black text-rose-400">0</h2>
+        </div>
+    </div>
+
+    <!-- Game Area -->
+    <div class="flex-1 flex flex-col items-center justify-center relative w-full">
+        <div id="tic-tac-toe-board" class="grid grid-cols-3 grid-rows-3 gap-3 w-full aspect-square max-w-[320px] mx-auto opacity-50 pointer-events-none transition-opacity duration-300">
+            <!-- Cells generated by JS -->
+        </div>
+        <div id="status-text" class="absolute -bottom-8 text-sm font-bold text-slate-500 tracking-widest uppercase">Waiting for Opponent...</div>
+    </div>
+
+    <div id="marquee-container"></div>
+
+    <!-- Controls / Chat -->
+    <div class="mb-4 relative z-10 w-full mt-12">
+        <div class="flex items-center gap-2">
+            <div id="chat-input-container" class="hidden flex-1">
+                <input type="text" id="chat-input" maxlength="40" placeholder="Trash talk here..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors shadow-inner text-white">
+            </div>
+            <button onclick="toggleChat()" class="w-12 h-12 ml-auto rounded-full bg-slate-800 flex items-center justify-center border border-white/10 hover:bg-slate-700 transition shadow-lg">
+                <i class="fa-solid fa-comment text-slate-300"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // --- GAME STATE ---
+        const params = new URLSearchParams(window.location.search);
+        const matchId = params.get('match') || 'test_match_ttt';
+        const wager = parseInt(params.get('wager')) || 100;
+        const hostId = params.get('host') || 'host123';
+        const guestId = params.get('guest') || 'guest123';
+        
+        let currentUser = null;
+        let myRole = ""; 
+        let currentRound = 1;
+        let scores = { host: 0, guest: 0 };
+        let gameActive = false;
+        let opponentPresent = false;
+        
+        // Tic-Tac-Toe Variables
+        let boardState = Array(9).fill(null);
+        let currentTurn = 'host'; // Host (X) always goes first in Round 1
+        const WIN_PATTERNS = [
+            [0,1,2], [3,4,5], [6,7,8], // Rows
+            [0,3,6], [1,4,7], [2,5,8], // Cols
+            [0,4,8], [2,4,6]           // Diagonals
+        ];
+
+        async function init() {
+            // Mock session for testing if auth fails. In production, rely on actual session.
+            const { data: { session } } = await flowClient.auth.getSession();
+            currentUser = session ? session.user : { id: Math.random() > 0.5 ? hostId : guestId }; 
+            myRole = currentUser.id === hostId ? "host" : "guest";
+            
+            document.getElementById('display-pot').innerText = (wager * 2).toLocaleString();
+            
+            await fetchPlayerProfiles();
+            createBoard();
+            setupRealtimePresence();
+        }
+
+        async function fetchPlayerProfiles() {
+            const getFallbackAvatar = (name, color) => `https://ui-avatars.com/api/?name=${name}&background=${color}&color=fff&bold=true`;
+
+            // Host Profile
+            const { data: hostData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', hostId).single();
+            const hostMeta = hostData?.raw_user_meta_data || { username: 'Host' };
+            document.getElementById('host-name').innerText = hostMeta.username || 'Host';
+            document.getElementById('host-pfp').src = hostMeta.avatar_url || getFallbackAvatar(hostMeta.username || 'H', '0F172A');
+
+            // Guest Profile
+            const { data: guestData } = await flowClient.from('profiles').select('raw_user_meta_data').eq('id', guestId).single();
+            const guestMeta = guestData?.raw_user_meta_data || { username: 'Guest' };
+            document.getElementById('guest-name').innerText = guestMeta.username || 'Guest';
+            document.getElementById('guest-pfp').src = guestMeta.avatar_url || getFallbackAvatar(guestMeta.username || 'G', '0F172A');
+        }
+
+        // --- BOARD RENDERING ---
+        function createBoard() {
+            const container = document.getElementById('tic-tac-toe-board');
+            container.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${i}`;
+                cell.onclick = () => handleCellClick(i);
+                container.appendChild(cell);
+            }
+        }
+
+        function updateBoardUI() {
+            boardState.forEach((val, index) => {
+                const cell = document.getElementById(`cell-${index}`);
+                if (val === 'X') {
+                    cell.innerText = 'X';
+                    cell.className = 'cell x-mark';
+                } else if (val === 'O') {
+                    cell.innerText = 'O';
+                    cell.className = 'cell o-mark';
+                } else {
+                    cell.innerText = '';
+                    cell.className = 'cell';
+                }
+            });
+        }
+
+        function updateTurnUI() {
+            const hostSec = document.getElementById('host-section');
+            const guestSec = document.getElementById('guest-section');
+            const status = document.getElementById('status-text');
+            const boardContainer = document.getElementById('tic-tac-toe-board');
+
+            if (!opponentPresent) {
+                status.innerText = "WAITING FOR OPPONENT...";
+                status.className = "absolute -bottom-8 text-sm font-bold text-slate-500 tracking-widest uppercase animate-pulse";
+                boardContainer.style.opacity = '0.5';
+                boardContainer.style.pointerEvents = 'none';
+                return;
+            }
+
+            if (!gameActive) return; // Mid-round transition
+
+            boardContainer.style.opacity = '1';
+            boardContainer.style.pointerEvents = 'auto';
+
+            if (currentTurn === 'host') {
+                hostSec.classList.add('active-host');
+                guestSec.classList.remove('active-guest');
+            } else {
+                guestSec.classList.add('active-guest');
+                hostSec.classList.remove('active-host');
+            }
+
+            if (myRole === currentTurn) {
+                status.innerText = "YOUR TURN!";
+                status.className = `absolute -bottom-8 text-sm font-bold tracking-widest uppercase ${myRole === 'host' ? 'text-blue-400' : 'text-rose-400'}`;
+            } else {
+                const waitingFor = currentTurn === 'host' ? 'Host (X)' : 'Guest (O)';
+                status.innerText = `WAITING FOR ${waitingFor}...`;
+                status.className = "absolute -bottom-8 text-sm font-bold text-slate-500 tracking-widest uppercase";
+            }
+        }
+
+        // --- REALTIME & PRESENCE (State Synchronization) ---
+        function setupRealtimePresence() {
+            const channel = flowClient.channel(`ttt_${matchId}`);
+            window.gameChannel = channel;
+
+            const userStatus = { id: currentUser.id, role: myRole };
+
+            channel
+                .on('presence', { event: 'sync' }, () => {
+                    const state = channel.presenceState();
+                    const players = Object.values(state).flat();
+                    
+                    const hasHost = players.some(p => p.role === 'host');
+                    const hasGuest = players.some(p => p.role === 'guest');
+                    
+                    if (hasHost && hasGuest) {
+                        if (!opponentPresent) {
+                            showToast('Opponent Connected!', 'success');
+                            opponentPresent = true;
+                            gameActive = true;
+                            
+                            // Host sends authoritative state to sync late joiners
+                            if (myRole === 'host') {
+                                channel.send({ type: 'broadcast', event: 'sync_state', payload: { boardState, currentTurn, scores, currentRound } });
+                            }
+                        }
+                        updateTurnUI();
+                    } else {
+                        opponentPresent = false;
+                        gameActive = false;
+                        updateTurnUI();
+                    }
+                })
+                .on('broadcast', { event: 'sync_state' }, ({ payload }) => {
+                    if (myRole === 'guest') {
+                        boardState = payload.boardState;
+                        currentTurn = payload.currentTurn;
+                        scores = payload.scores;
+                        currentRound = payload.currentRound;
+                        
+                        document.getElementById('score-host').innerText = scores.host;
+                        document.getElementById('score-guest').innerText = scores.guest;
+                        document.getElementById('round-num').innerText = currentRound;
+                        updateBoardUI();
+                        updateTurnUI();
+                    }
+                })
+                .on('broadcast', { event: 'make_move' }, ({ payload }) => {
+                    executeMove(payload.index, payload.role);
+                })
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    showMarquee(`${payload.sender}: ${payload.msg}`);
+                })
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await channel.track(userStatus);
+                    }
+                });
+        }
+
+        // --- GAME LOGIC ---
+        function handleCellClick(index) {
+            if (!gameActive || !opponentPresent || myRole !== currentTurn || boardState[index] !== null) return;
+            
+            // Send move to opponent immediately
+            window.gameChannel.send({ type: 'broadcast', event: 'make_move', payload: { index, role: myRole } });
+            
+            // Execute locally
+            executeMove(index, myRole);
+        }
+
+        function executeMove(index, role) {
+            boardState[index] = role === 'host' ? 'X' : 'O';
+            updateBoardUI();
+            
+            const winPattern = checkWin(role === 'host' ? 'X' : 'O');
+            
+            if (winPattern) {
+                handleRoundEnd(role, winPattern);
+            } else if (boardState.every(cell => cell !== null)) {
+                handleRoundEnd('tie', null);
+            } else {
+                currentTurn = currentTurn === 'host' ? 'guest' : 'host';
+                updateTurnUI();
+            }
+        }
+
+        function checkWin(mark) {
+            for (let pattern of WIN_PATTERNS) {
+                const [a, b, c] = pattern;
+                if (boardState[a] === mark && boardState[b] === mark && boardState[c] === mark) {
+                    return pattern;
+                }
+            }
+            return null;
+        }
+
+        function handleRoundEnd(winnerRole, winPattern) {
+            gameActive = false;
+            const statusText = document.getElementById('status-text');
+            
+            if (winnerRole === 'tie') {
+                statusText.innerText = "ROUND TIED!";
+                statusText.className = "absolute -bottom-8 text-sm font-bold text-yellow-500 tracking-widest uppercase";
+            } else {
+                // Highlight winning cells
+                winPattern.forEach(idx => {
+                    document.getElementById(`cell-${idx}`).classList.add('winning-cell');
+                });
+                
+                scores[winnerRole]++;
+                document.getElementById(`score-${winnerRole}`).innerText = scores[winnerRole];
+                statusText.innerText = `${winnerRole === 'host' ? 'HOST' : 'GUEST'} WINS ROUND!`;
+                statusText.className = `absolute -bottom-8 text-sm font-bold tracking-widest uppercase ${winnerRole === 'host' ? 'text-blue-400' : 'text-rose-400'}`;
+            }
+
+            setTimeout(() => {
+                if (currentRound < 3) {
+                    currentRound++;
+                    document.getElementById('round-num').innerText = currentRound;
+                    boardState = Array(9).fill(null);
+                    
+                    // Alternating starts. Round 2: Guest starts. Round 3: Host starts.
+                    currentTurn = currentRound % 2 === 0 ? 'guest' : 'host';
+                    
+                    updateBoardUI();
+                    gameActive = true;
+                    updateTurnUI();
+                } else {
+                    determineMatchWinner();
+                }
+            }, 2500);
+        }
+
+        function determineMatchWinner() {
+            gameActive = false;
+            let finalWinner = null;
+            
+            if (scores.host > scores.guest) finalWinner = 'host';
+            else if (scores.guest > scores.host) finalWinner = 'guest';
+            else finalWinner = 'tie';
+
+            setTimeout(() => finalizeGame(finalWinner), 500);
+        }
+
+        async function finalizeGame(winnerRole) {
+            window.gameChannel.unsubscribe(); // Stop taking network input
+            
+            const totalPot = wager * 2;
+            const winnings = Math.floor(totalPot * 0.9); // 10% rake
+            
+            if (winnerRole === 'tie') {
+                Swal.fire({
+                    title: 'DRAW!',
+                    text: 'Match ended in a tie. Wagers have been refunded.',
+                    icon: 'info',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#64748b',
+                    confirmButtonText: 'Return to Lobby'
+                }).then(() => window.location.replace('index.html'));
+                return;
+            }
+
+            if (myRole === winnerRole) {
+                confetti({
+                    particleCount: 200, spread: 90, origin: { y: 0.6 },
+                    colors: winnerRole === 'host' ? ['#3b82f6', '#93c5fd', '#ffffff'] : ['#f43f5e', '#fda4af', '#ffffff']
+                });
+
+                // NOTE: Add your real Supabase coin increment logic here
+                
+                Swal.fire({
+                    title: '🎉 VICTORY! 🎉',
+                    text: `You crushed it! Won ${winnings} coins!`,
+                    icon: 'success',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: winnerRole === 'host' ? '#3b82f6' : '#f43f5e',
+                    confirmButtonText: 'Collect & Leave',
+                    customClass: { popup: `border ${winnerRole === 'host' ? 'border-blue-500/30' : 'border-rose-500/30'}` }
+                }).then(() => window.location.replace('index.html'));
+            } else {
+                Swal.fire({
+                    title: 'DEFEAT 💀',
+                    text: 'You got washed. Better luck next time!',
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    confirmButtonColor: '#64748b',
+                    confirmButtonText: 'Leave Arena',
+                    customClass: { popup: 'border border-slate-700' }
+                }).then(() => window.location.replace('index.html'));
+            }
+        }
+
+        // --- CHAT & UI UTILS ---
+        function toggleChat() {
+            const container = document.getElementById('chat-input-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const msg = e.target.value.trim();
+                if (!msg) return;
+                
+                const senderName = document.getElementById(`${myRole}-name`).innerText;
+                window.gameChannel.send({ type: 'broadcast', event: 'chat', payload: { msg, sender: senderName } });
+                showMarquee(`You: ${msg}`);
+                e.target.value = "";
+                toggleChat();
+            }
+        });
+
+        function showMarquee(text) {
+            const container = document.getElementById('marquee-container');
+            const el = document.createElement('div');
+            el.className = 'marquee-text';
+            el.innerText = text;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 6000);
+        }
+
+        const Toast = Swal.mixin({
+            toast: true, position: 'top-end', showConfirmButton: false, timer: 2000,
+            background: '#1e293b', color: '#fff'
+        });
+        function showToast(title, icon) { Toast.fire({ icon, title }); }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

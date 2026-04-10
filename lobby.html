@@ -107,6 +107,39 @@
             </div>
             <div id="status-msg" class="text-center text-xs font-bold text-orange-400">Waiting for opponent...</div>
         </main>
+<style>
+    #chat-trigger { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: none; }
+    #chat-window { 
+        position: fixed; bottom: 85px; right: 20px; width: 300px; height: 400px; 
+        z-index: 1000; display: none; flex-direction: column; overflow: hidden;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+</style>
+
+<button id="chat-trigger" onclick="toggleArenaChat()" class="w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center active:scale-90 transition-all border-2 border-white/10">
+    <i class="fa-solid fa-comment-dots text-xl"></i>
+    <span id="chat-notif" class="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-[#020617] hidden"></span>
+</button>
+
+<div id="chat-window" class="glass-card flex flex-col border-blue-500/30">
+    <div class="p-3 border-b border-white/5 bg-blue-600/10 flex justify-between items-center">
+        <span class="text-xs font-black uppercase tracking-widest text-blue-400">Battle Chat</span>
+        <button onclick="toggleArenaChat()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-times"></i></button>
+    </div>
+    
+    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 text-[11px]">
+        <div class="text-slate-500 italic text-center">No messages yet. Stay respectful!</div>
+    </div>
+
+    <div class="p-3 bg-slate-900/50 border-t border-white/5 flex gap-2">
+        <input id="chat-input-field" type="text" placeholder="Type a message..." 
+               class="flex-1 bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 text-white">
+        <button onclick="sendFloatingMessage()" class="w-10 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+            <i class="fa-solid fa-paper-plane text-xs"></i>
+        </button>
+    </div>
+</div>
+
 
         <div class="p-6 pb-12">
             <button id="start-game-btn" onclick="startGame()" class="w-full bg-gradient-to-r from-green-500 to-emerald-400 py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg shadow-green-900/20 active:scale-95 transition-all opacity-50 pointer-events-none">
@@ -120,6 +153,8 @@
         const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
         const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
         const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/bottts/svg?seed=Flow';
 
         let currentUser = null;
         let onlineUsers = [];
@@ -218,31 +253,37 @@ let currentBalance = 0;
         }
 
         function renderPlayers() {
-            const list = document.getElementById('players-list');
-            if (onlineUsers.length === 0) {
-                list.innerHTML = `<div class="glass-card p-10 text-center border-dashed border-white/10 text-slate-500 text-xs font-bold uppercase">No rivals found...</div>`;
-                return;
-            }
-            
-            // Replaced placeholders. Now explicitly uses u.avatar_url or an empty src to fallback to standard styling if missing.
-            list.innerHTML = onlineUsers.map(u => `
-                <div class="glass-card p-3 flex items-center justify-between border-white/5">
-                    <div class="flex items-center gap-3">
-                        <div class="relative">
-                            <img src="${u.avatar_url || ''}" alt="" class="w-12 h-12 rounded-full border-2 border-slate-800 object-cover bg-slate-900">
-                            <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#020617] rounded-full"></span>
-                        </div>
-                        <div>
-                            <p class="text-sm font-bold text-white">${u.username || 'Player'}</p>
-                            <span class="location-tag text-[9px] px-2 py-0.5 rounded-md inline-block font-bold uppercase">${u.current_location || 'Exploring'}</span>
-                        </div>
+    const list = document.getElementById('players-list');
+    if (onlineUsers.length === 0) {
+        list.innerHTML = `<div class="glass-card p-10 text-center border-dashed border-white/10 text-slate-500 text-xs font-bold uppercase">No rivals found...</div>`;
+        return;
+    }
+    
+    list.innerHTML = onlineUsers.map(u => {
+        // This line creates a default "Robot" image if the user has no avatar_url
+        const profilePic = u.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.username}`;
+
+        return `
+            <div class="glass-card p-3 flex items-center justify-between border-white/5">
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <img src="${profilePic}" 
+                             onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=fallback'"
+                             alt="" class="w-12 h-12 rounded-full border-2 border-slate-800 object-cover bg-slate-900">
+                        <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#020617] rounded-full"></span>
                     </div>
-                    <button id="btn-${u.id}" onclick="sendChallenge('${u.id}')" class="w-10 h-10 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20 flex items-center justify-center transition active:scale-90">
-                        <i class="fa-solid fa-paper-plane"></i>
-                    </button>
+                    <div>
+                        <p class="text-sm font-bold text-white">${u.username || 'Player'}</p>
+                        <span class="location-tag text-[9px] px-2 py-0.5 rounded-md inline-block font-bold uppercase">${u.current_location || 'Exploring'}</span>
+                    </div>
                 </div>
-            `).join('');
-        }
+                <button id="btn-${u.id}" onclick="sendChallenge('${u.id}')" class="w-10 h-10 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20 flex items-center justify-center transition active:scale-90">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        `;
+    }).join('');
+}
 
         async function sendChallenge(targetPlayerId) {
             const btn = document.getElementById(`btn-${targetPlayerId}`);
@@ -276,22 +317,44 @@ let currentBalance = 0;
 
         // --- POPUP LOGIC ---
         let activeChallenge = null;
-        function showChallengePopup(payload) {
-            activeChallenge = payload;
-            const popup = document.getElementById('global-challenge-popup');
-            document.getElementById('popup-challenger-name').innerText = payload.challengerName;
-            document.getElementById('popup-game-name').innerText = (payload.game || "Game").toUpperCase();
-            document.getElementById('popup-challenger-img').src = payload.challengerAvatar || '';
-            
-            popup.classList.replace('-translate-y-[150%]', 'translate-y-0');
-            document.getElementById('popup-timer-bar').style.width = '100%';
-            setTimeout(() => { document.getElementById('popup-timer-bar').style.transition = 'width 10s linear'; document.getElementById('popup-timer-bar').style.width = '0%'; }, 50);
+    function showChallengePopup(payload) {
+    activeChallenge = payload;
+    const popup = document.getElementById('global-challenge-popup');
+    
+    // 1. Handle the fallback image logic
+    const challengerImg = document.getElementById('popup-challenger-img');
+    const fallbackPic = `https://api.dicebear.com/7.x/bottts/svg?seed=${payload.challengerName}`;
+    
+    // Set the text and game name
+    document.getElementById('popup-challenger-name').innerText = payload.challengerName;
+    document.getElementById('popup-game-name').innerText = (payload.game || "Game").toUpperCase();
+    
+    // Set the image: Use their avatar if it exists, otherwise use the fallback
+    challengerImg.src = payload.challengerAvatar || fallbackPic;
+    
+    // If the link they provided is broken, swap it for the fallback
+    challengerImg.onerror = () => challengerImg.src = fallbackPic;
 
-            const timeout = setTimeout(() => handleChallengeResponse(false), 10000);
-            
-            document.getElementById('btn-accept-challenge').onclick = () => { clearTimeout(timeout); handleChallengeResponse(true); };
-            document.getElementById('btn-decline-challenge').onclick = () => { clearTimeout(timeout); handleChallengeResponse(false); };
-        }
+    // --- Original Animation Logic ---
+    popup.classList.replace('-translate-y-[150%]', 'translate-y-0');
+    document.getElementById('popup-timer-bar').style.width = '100%';
+    setTimeout(() => { 
+        document.getElementById('popup-timer-bar').style.transition = 'width 10s linear'; 
+        document.getElementById('popup-timer-bar').style.width = '0%'; 
+    }, 50);
+
+    const timeout = setTimeout(() => handleChallengeResponse(false), 10000);
+    
+    document.getElementById('btn-accept-challenge').onclick = () => { 
+        clearTimeout(timeout); 
+        handleChallengeResponse(true); 
+    };
+    document.getElementById('btn-decline-challenge').onclick = () => { 
+        clearTimeout(timeout); 
+        handleChallengeResponse(false); 
+    };
+}
+
 
         async function handleChallengeResponse(accepted) {
             document.getElementById('global-challenge-popup').classList.replace('translate-y-0', '-translate-y-[150%]');
@@ -343,24 +406,35 @@ if (error) console.error("Error fetching balance:", error);
 
     matchChannel = flowClient.channel(matchId);
     matchChannel
-        .on('broadcast', { event: 'wager_update' }, ({ payload }) => {
-            if (payload.userId !== currentUser.id) {
-                oppWager = payload.wager;
-                oppLocked = payload.locked;
-                
-                const p2Img = document.getElementById('p2-avatar');
-                p2Img.src = payload.avatar || '';
-                p2Img.classList.remove('hidden');
-                document.getElementById('p2-loading').classList.add('hidden');
-                document.getElementById('p2-name').innerText = payload.username;
-                
-                const oppStatus = document.getElementById('p2-status');
-                oppStatus.innerText = oppLocked ? `LOCKED: ${oppWager}` : `Selecting...`;
-                oppStatus.className = oppLocked ? "text-[10px] text-green-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
-                
-                evaluateMatchState();
-            }
-        })
+    .on('broadcast', { event: 'wager_update' }, ({ payload }) => {
+        if (payload.userId !== currentUser.id) {
+            oppWager = payload.wager;
+            oppLocked = payload.locked;
+            
+            // --- UPDATED IMAGE LOGIC START ---
+            const p2Img = document.getElementById('p2-avatar');
+            const fallback = `https://api.dicebear.com/7.x/bottts/svg?seed=${payload.username}`;
+            
+            // Set name and hide loading state
+            document.getElementById('p2-name').innerText = payload.username;
+            document.getElementById('p2-loading').classList.add('hidden');
+            p2Img.classList.remove('hidden');
+
+            // Use avatar if it exists, otherwise use fallback
+            p2Img.src = payload.avatar || fallback;
+            
+            // Safety net: if the URL is broken, switch to fallback
+            p2Img.onerror = () => { p2Img.src = fallback; };
+            // --- UPDATED IMAGE LOGIC END ---
+            
+            const oppStatus = document.getElementById('p2-status');
+            oppStatus.innerText = oppLocked ? `LOCKED: ${oppWager}` : `Selecting...`;
+            oppStatus.className = oppLocked ? "text-[10px] text-green-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
+            
+            evaluateMatchState();
+        }
+    })
+    
         .on('broadcast', { event: 'start_countdown' }, ({payload}) => {
             if (myRole === 'guest') {
                 // The host sends the game name in the payload, so the guest stays synced
@@ -508,6 +582,105 @@ if (error) console.error("Error fetching balance:", error);
         }
 
         document.addEventListener('DOMContentLoaded', initPage);
+        
+       /**
+ * INDEPENDENT FLOATING CHAT ENGINE
+ * Creates its own connection to ensure delivery.
+ */
+let chatPluginChannel = null;
+
+function toggleArenaChat() {
+    const win = document.getElementById('chat-window');
+    const isHidden = win.style.display === 'none' || win.style.display === '';
+    win.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) document.getElementById('chat-notif').classList.add('hidden');
+}
+
+function addMsg(name, text, side) {
+    const container = document.getElementById('chat-messages');
+    if(!container) return;
+    const msg = document.createElement('div');
+    const isMe = side === 'right';
+    
+    msg.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+    msg.innerHTML = `
+        <span class="text-[9px] font-bold uppercase ${isMe ? 'text-blue-400' : 'text-red-400'} mb-1">${name}</span>
+        <div class="px-3 py-2 rounded-2xl max-w-[90%] ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none'}">
+            ${text}
+        </div>
+    `;
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+
+    if (document.getElementById('chat-window').style.display === 'none') {
+        document.getElementById('chat-notif').classList.remove('hidden');
+    }
+}
+
+function sendFloatingMessage() {
+    const input = document.getElementById('chat-input-field');
+    const msg = input.value.trim();
+    
+    // Use the independent plugin channel
+    if (msg && chatPluginChannel) {
+        chatPluginChannel.send({
+            type: 'broadcast',
+            event: 'battle_chat',
+            payload: {
+                sender: currentUser.user_metadata.username || 'Player',
+                text: msg,
+                uid: currentUser.id
+            }
+        });
+        addMsg("You", msg, 'right');
+        input.value = "";
+    } else {
+        input.placeholder = "Connecting...";
+        setTimeout(() => { input.placeholder = "Type a message..."; }, 2000);
+    }
+}
+
+// THE HUNTER - Now creates its own dedicated chat channel
+const connectionHunter = setInterval(() => {
+    const wagerView = document.getElementById('view-wager');
+    const isWagerScreen = wagerView && wagerView.offsetParent !== null;
+
+    if (isWagerScreen && activeMatchId) {
+        document.getElementById('chat-trigger').style.display = 'flex';
+        
+        // Create a dedicated chat channel for the match if it doesn't exist
+        if (!chatPluginChannel) {
+            // We append '_chat' to the matchId so it's a unique but shared room
+            chatPluginChannel = flowClient.channel(activeMatchId + '_chat');
+
+            chatPluginChannel
+                .on('broadcast', { event: 'battle_chat' }, ({ payload }) => {
+                    if (payload.uid !== currentUser.id) {
+                        addMsg(payload.sender, payload.text, 'left');
+                    }
+                })
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log("✅ Chat Plugin: Dedicated Channel Subscribed");
+                    }
+                });
+        }
+    } else {
+        // Cleanup when leaving wager screen
+        if (chatPluginChannel) {
+            chatPluginChannel.unsubscribe();
+            chatPluginChannel = null;
+        }
+        document.getElementById('chat-trigger').style.display = 'none';
+        document.getElementById('chat-window').style.display = 'none';
+    }
+}, 1000);
+
+document.getElementById('chat-input-field')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendFloatingMessage();
+});
+
+
     </script>
 </body>
 </html>
