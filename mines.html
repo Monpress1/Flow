@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Flow | Food vs Bombs</title>
+    <title>Flow | Food vs Bombs Arena</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,19 +12,13 @@
     
     <style>
         body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
-        
         #game-container { position: relative; width: 100vw; height: 100vw; max-width: 400px; max-height: 400px; margin: 0 auto; margin-top: 10px; }
         .grid-layer { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 4px; width: 100%; height: 100%; padding: 4px; }
         .tile { background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; transition: all 0.2s; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        
-        /* Tile States */
         .tile-food { background: rgba(133, 77, 14, 0.4) !important; border-color: #eab308 !important; box-shadow: inset 0 0 15px rgba(234, 179, 8, 0.2); }
         .tile-bomb { background: rgba(153, 27, 27, 0.4) !important; border-color: #ef4444 !important; box-shadow: inset 0 0 20px rgba(239, 68, 68, 0.4); }
-
-        /* Joystick */
         #joystick-wrapper { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; background: rgba(255,255,255,0.05); border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); z-index: 40; }
         #joystick-stick { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.8); border-radius: 50%; top: 35px; left: 35px; box-shadow: 0 0 20px rgba(255,255,255,0.2); transition: transform 0.05s linear; }
-        
         canvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 20; }
         .glass-panel { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); }
         .swal2-popup { border-radius: 1.5rem !important; font-family: 'Inter', sans-serif !important; }
@@ -46,22 +40,20 @@
                 <li class="flex items-center gap-3"><i class="fa-solid fa-stopwatch text-green-400 text-lg w-6"></i> 50 seconds. Winner takes 180%.</li>
             </ul>
         </div>
-        <p id="rules-countdown" class="mt-8 text-6xl font-black text-blue-500">3</p>
+        <p id="rules-countdown" class="mt-8 text-xl font-black text-blue-500 uppercase tracking-widest text-center">Waiting for opponent...</p>
     </div>
 
     <header class="p-4 flex justify-between items-center bg-slate-900/50 border-b border-white/5 relative z-30">
         <div class="flex-1">
-            <h2 class="text-xs font-black uppercase"><span id="p1-name">You</span></h2>
+            <h2 class="text-xs font-black uppercase text-slate-400" id="p1-label">You</h2>
             <p class="text-2xl font-black text-blue-400" id="p1-score">0</p>
         </div>
-        
         <div class="flex-1 text-center">
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Time</p>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Time Left</p>
             <h2 class="text-2xl font-black text-white"><span id="time-val">50</span>s</h2>
         </div>
-
         <div class="flex-1 text-right">
-            <h2 class="text-xs font-black uppercase"><span id="p2-name">Opponent</span></h2>
+            <h2 class="text-xs font-black uppercase text-slate-400" id="p2-label">Opponent</h2>
             <p class="text-2xl font-black text-red-400" id="p2-score">0</p>
         </div>
     </header>
@@ -71,33 +63,34 @@
         <canvas id="gameCanvas"></canvas>
     </div>
 
-    <div id="status-msg" class="text-center mt-6 text-sm font-bold text-slate-400 uppercase tracking-widest animate-pulse">Waiting for players...</div>
+    <div id="status-msg" class="text-center mt-6 text-sm font-bold text-slate-400 uppercase tracking-widest animate-pulse">Establishing Link...</div>
 
     <div id="joystick-wrapper">
         <div id="joystick-stick"></div>
     </div>
 
     <script>
-        // --- SUPABASE SETUP ---
+        // --- CONFIG & STATE ---
         const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
         const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
         const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
 
         const params = new URLSearchParams(window.location.search);
-        const matchId = params.get('match') || 'food_bombs_arena';
-        const hostId = params.get('host'); 
-        const wager = parseInt(params.get('wager')) || 100; // Amount stacked
+        const matchId = params.get('match') || 'dev_arena';
+        const hostId = params.get('host');
+        const wager = parseInt(params.get('wager')) || 100;
         
         let currentUser, myRole, gameChannel;
-        
-        let p1 = { x: 0, y: 0, score: 0, alive: true, name: 'You', angle: 0, walking: false, color: '#3b82f6' };
-        let p2 = { x: 0, y: 0, score: 0, alive: true, name: 'Opponent', angle: 0, walking: false, color: '#ef4444' };
-        
+        let p1 = { x: 0, y: 0, score: 0, alive: true, angle: 0, walking: false, color: '#3b82f6' };
+        let p2 = { x: 0, y: 0, targetX: 0, targetY: 0, score: 0, alive: true, angle: 0, walking: false, color: '#ef4444' };
+
         let gameActive = false;
         let roundTime = 50; 
         let timerInterval;
         let tiles = [];
         let hostIsControllingGame = false;
+        let lastBroadcastTime = 0;
+        let matchReadyTriggered = false;
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -105,38 +98,21 @@
 
         async function init() {
             const { data: { session } } = await flowClient.auth.getSession();
-            currentUser = session ? session.user : { id: hostId || 'test_user_' + Math.random() }; 
-            myRole = currentUser.id === hostId ? 'host' : 'guest';
-            hostIsControllingGame = (myRole === 'host'); 
+            currentUser = session ? session.user : { id: hostId || 'anon_' + Math.random() };
+            
+            // Determine Role correctly
+            myRole = (currentUser.id === hostId) ? 'host' : 'guest';
+            hostIsControllingGame = (myRole === 'host');
 
-            if (myRole === 'host') {
-                p1.color = '#3b82f6'; p2.color = '#ef4444';
-                document.getElementById('joystick-stick').style.background = '#3b82f6';
-            } else {
+            // UI Personalization
+            if (!hostIsControllingGame) {
                 p1.color = '#ef4444'; p2.color = '#3b82f6';
-                document.getElementById('joystick-stick').style.background = '#ef4444';
                 document.getElementById('p1-score').className = "text-2xl font-black text-red-400";
                 document.getElementById('p2-score').className = "text-2xl font-black text-blue-400";
             }
+            document.getElementById('joystick-stick').style.background = p1.color;
 
             resize(); setupGrid(); resetPositions(); setupRealtime();
-            
-            let count = 3;
-            const counterEl = document.getElementById('rules-countdown');
-            const interval = setInterval(() => {
-                count--;
-                if(count > 0) {
-                    counterEl.innerText = count;
-                } else {
-                    clearInterval(interval);
-                    document.getElementById('rules-overlay').style.opacity = '0';
-                    setTimeout(() => {
-                        document.getElementById('rules-overlay').style.display = 'none';
-                        if(hostIsControllingGame) startRound();
-                    }, 500);
-                }
-            }, 1000);
-            
             requestAnimationFrame(render);
         }
 
@@ -151,110 +127,160 @@
         function resize() { canvas.width = container.offsetWidth; canvas.height = container.offsetHeight; }
 
         function resetPositions() {
-            if (myRole === 'host') { p1.x = 40; p1.y = 40; p2.x = canvas.width - 40; p2.y = canvas.height - 40; } 
-            else { p1.x = canvas.width - 40; p1.y = canvas.height - 40; p2.x = 40; p2.y = 40; }
-            p1.alive = p2.alive = true;
+            if (hostIsControllingGame) {
+                p1.x = 40; p1.y = 40; p2.x = canvas.width - 40; p2.y = canvas.height - 40;
+            } else {
+                p1.x = canvas.width - 40; p1.y = canvas.height - 40; p2.x = 40; p2.y = 40;
+            }
+            p2.targetX = p2.x; p2.targetY = p2.y;
         }
 
-        // --- REALTIME CONNECTION ---
+        // --- REALTIME & HANDSHAKE ---
         function setupRealtime() {
-            gameChannel = flowClient.channel(matchId);
+            gameChannel = flowClient.channel(`room_${matchId}`, {
+                config: { presence: { key: myRole } }
+            });
+
             gameChannel
-                .on('broadcast', { event: 'move' }, ({payload}) => {
-                    if(payload.uid !== currentUser.id) { 
-                        p2.x = payload.x; p2.y = payload.y; p2.angle = payload.angle; p2.walking = payload.walking;
+                .on('presence', { event: 'sync' }, () => {
+                    const state = gameChannel.presenceState();
+                    const rolesPresent = Object.keys(state);
+                    
+                    // Host checks if Guest is here to start the game
+                    if (hostIsControllingGame && rolesPresent.includes('guest') && !matchReadyTriggered) {
+                        matchReadyTriggered = true;
+                        setTimeout(() => {
+                            gameChannel.send({ type: 'broadcast', event: 'match_ready' });
+                            startCountdown();
+                        }, 1500);
                     }
                 })
-                .on('broadcast', { event: 'round_start' }, () => {
-                    gameActive = true;
-                    document.getElementById('status-msg').innerText = "EAT!";
-                    document.getElementById('status-msg').classList.replace('text-slate-400', 'text-yellow-400');
-                    startClientTimer();
+                .on('broadcast', { event: 'match_ready' }, () => {
+                    if (!hostIsControllingGame) startCountdown();
+                })
+                .on('broadcast', { event: 'move' }, ({payload}) => {
+                    if(payload.uid !== currentUser.id) {
+                        p2.targetX = payload.x; p2.targetY = payload.y;
+                        p2.angle = payload.angle; p2.walking = payload.walking;
+                    }
+                })
+                .on('broadcast', { event: 'sync_state' }, ({payload}) => {
+                    if (!hostIsControllingGame) {
+                        p2.score = payload.h_score; p1.score = payload.g_score;
+                        roundTime = payload.time;
+                        document.getElementById('p2-score').innerText = p2.score;
+                        document.getElementById('p1-score').innerText = p1.score;
+                        // Force tile alignment
+                        payload.tiles.forEach((state, i) => {
+                            if (tiles[i].state !== state) {
+                                if (state === 'normal') resetTile(tiles[i]);
+                                else handleSpawn({type: state, idx: i});
+                            }
+                        });
+                    }
                 })
                 .on('broadcast', { event: 'spawn' }, ({payload}) => { handleSpawn(payload); })
                 .on('broadcast', { event: 'eat' }, ({payload}) => {
-                    let tile = tiles[payload.idx];
-                    if(tile) resetTile(tile);
-                    if(payload.uid !== currentUser.id) { p2.score = payload.score; document.getElementById('p2-score').innerText = p2.score; }
+                    let tile = tiles[payload.idx]; if(tile) resetTile(tile);
+                    if(payload.uid !== currentUser.id) {
+                        p2.score = payload.score;
+                        document.getElementById('p2-score').innerText = p2.score;
+                    }
                 })
                 .on('broadcast', { event: 'death' }, ({payload}) => {
                     if(payload.uid === currentUser.id) p1.alive = false; else p2.alive = false;
                     checkEndGame();
                 })
-                .subscribe();
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await gameChannel.track({ online_at: new Date().toISOString() });
+                        document.getElementById('status-msg').innerText = "Waiting for Opponent...";
+                    }
+                });
         }
 
-        function startClientTimer() {
-            document.getElementById('time-val').innerText = roundTime;
-            timerInterval = setInterval(() => {
-                if(!gameActive) return clearInterval(timerInterval);
-                roundTime--;
-                document.getElementById('time-val').innerText = roundTime;
-                if(roundTime <= 0) {
-                    gameActive = false; clearInterval(timerInterval); checkEndGame(true);
+        function startCountdown() {
+            let count = 3;
+            const counterEl = document.getElementById('rules-countdown');
+            const interval = setInterval(() => {
+                counterEl.innerText = count;
+                if(count <= 0) {
+                    clearInterval(interval);
+                    document.getElementById('rules-overlay').style.opacity = '0';
+                    setTimeout(() => { 
+                        document.getElementById('rules-overlay').style.display = 'none';
+                        if(hostIsControllingGame) runHostEngine();
+                        gameActive = true;
+                        startClientTimer();
+                        document.getElementById('status-msg').innerText = "GO! GO! GO!";
+                        document.getElementById('status-msg').classList.replace('text-slate-400', 'text-yellow-400');
+                    }, 500);
                 }
+                count--;
             }, 1000);
         }
 
-        // --- GAME LOGIC (HOST DRIVEN SPAWNS) ---
-        function startRound() {
-            gameActive = true;
-            gameChannel.send({type:'broadcast', event:'round_start'});
-            startClientTimer();
+        // --- HOST ENGINE (SOURCE OF TRUTH) ---
+        function runHostEngine() {
+            // Heartbeat Sync
+            setInterval(() => {
+                if(!gameActive) return;
+                gameChannel.send({
+                    type: 'broadcast',
+                    event: 'sync_state',
+                    payload: {
+                        h_score: p1.score, g_score: p2.score,
+                        time: roundTime, tiles: tiles.map(t => t.state)
+                    }
+                });
+            }, 2000);
 
-            // Spawn Food every 1.5 seconds
+            // Spawning
             setInterval(() => {
                 if(!gameActive) return;
                 let idx = getRandomEmptyTile();
                 if(idx !== null) {
-                    gameChannel.send({type:'broadcast', event:'spawn', payload:{type:'food', idx}});
-                    handleSpawn({type:'food', idx});
+                    let type = Math.random() > 0.3 ? 'food' : 'bomb';
+                    let payload = { type, idx, duration: 4000 };
+                    gameChannel.send({ type: 'broadcast', event: 'spawn', payload });
+                    handleSpawn(payload);
                 }
-            }, 1500);
-
-            // Spawn Bombs every 2 seconds
-            setInterval(() => {
-                if(!gameActive) return;
-                let idx = getRandomEmptyTile();
-                if(idx !== null) {
-                    let duration = 700 + Math.random() * 700; // Bombs last 2-4 seconds
-                    gameChannel.send({type:'broadcast', event:'spawn', payload:{type:'bomb', idx, duration}});
-                    handleSpawn({type:'bomb', idx, duration});
-                }
-            }, 4000);
-        }
-
-        function getRandomEmptyTile() {
-            let empty = [];
-            tiles.forEach((t, i) => { if(t.state === 'normal') empty.push(i); });
-            if(empty.length === 0) return null;
-            return empty[Math.floor(Math.random() * empty.length)];
+            }, 1300);
         }
 
         function handleSpawn(data) {
             let tile = tiles[data.idx];
             if(!tile || tile.state !== 'normal') return;
-            
+            tile.state = data.type;
             if(data.type === 'food') {
-                tile.state = 'food';
                 tile.el.innerHTML = '<i class="fa-solid fa-burger text-3xl text-yellow-400 drop-shadow-md"></i>';
                 tile.el.classList.add('tile-food');
-            } else if(data.type === 'bomb') {
-                tile.state = 'bomb';
+            } else {
                 tile.el.innerHTML = '<i class="fa-solid fa-bomb text-3xl text-red-500 animate-pulse drop-shadow-md"></i>';
                 tile.el.classList.add('tile-bomb');
-                
-                setTimeout(() => { if(tile.state === 'bomb') resetTile(tile); }, data.duration);
+                if (data.duration) setTimeout(() => { if(tile.state === 'bomb') resetTile(tile); }, data.duration);
             }
         }
 
         function resetTile(tile) {
-            tile.state = 'normal';
-            tile.el.innerHTML = '';
-            tile.el.className = 'tile';
+            tile.state = 'normal'; tile.el.innerHTML = ''; tile.el.className = 'tile';
         }
 
-        // --- MOVEMENT & COLLISION (CLIENT DRIVEN) ---
+        function getRandomEmptyTile() {
+            let empty = tiles.map((t, i) => t.state === 'normal' ? i : null).filter(v => v !== null);
+            return empty.length ? empty[Math.floor(Math.random() * empty.length)] : null;
+        }
+
+        function startClientTimer() {
+            timerInterval = setInterval(() => {
+                if(!gameActive) return clearInterval(timerInterval);
+                roundTime--;
+                document.getElementById('time-val').innerText = Math.max(0, roundTime);
+                if(roundTime <= 0) { gameActive = false; checkEndGame(true); }
+            }, 1000);
+        }
+
+        // --- CONTROLS ---
         let joystick = { active: false, x: 0, y: 0 };
         const stick = document.getElementById('joystick-stick');
         
@@ -273,129 +299,89 @@
         document.addEventListener('touchend', () => { joystick.active = false; p1.walking = false; stick.style.transform = `translate(0,0)`; joystick.x = 0; joystick.y = 0; });
 
         function updateMovement() {
-            if(!p1.alive || !gameActive) { p1.walking = false; return; }
+            if(!p1.alive || !gameActive) return;
 
             if (joystick.active) {
-                let nextX = p1.x + (joystick.x * 3.5); // Speed
-                let nextY = p1.y + (joystick.y * 3.5);
+                let nextX = p1.x + (joystick.x * 4.5);
+                let nextY = p1.y + (joystick.y * 4.5);
+                
+                // Wall Collisions
+                if (nextX < 15 || nextX > canvas.width - 15) nextX = p1.x;
+                if (nextY < 15 || nextY > canvas.height - 15) nextY = p1.y;
 
-                // Check bounds
-                if (nextX <= 15 || nextX >= canvas.width - 15) nextX = p1.x;
-                if (nextY <= 15 || nextY >= canvas.height - 15) nextY = p1.y;
-
-                // Player Collision Detection (Bodyblocking)
-                if(p2.alive) {
-                    let dxCollide = nextX - p2.x;
-                    let dyCollide = nextY - p2.y;
-                    let distCollide = Math.sqrt(dxCollide * dxCollide + dyCollide * dyCollide);
-                    
-                    // Radius is roughly 11, so 22 is minimum distance. Using 24 for a slight cushion.
-                    if (distCollide < 24) { 
-                        nextX = p1.x;
-                        nextY = p1.y;
-                    }
+                // Player-to-Player Bodyblock
+                if (p2.alive) {
+                    let dist = Math.hypot(nextX - p2.x, nextY - p2.y);
+                    if (dist < 25) { nextX = p1.x; nextY = p1.y; }
                 }
 
-                p1.x = nextX;
-                p1.y = nextY;
+                p1.x = nextX; p1.y = nextY;
             }
 
             // Tile Interaction
-            let tileW = canvas.width / 4; let tileH = canvas.height / 4;
-            let myIdx = Math.floor(p1.y / tileH) * 4 + Math.floor(p1.x / tileW);
-            let currentTile = tiles[myIdx];
+            let tw = canvas.width / 4; let th = canvas.height / 4;
+            let idx = Math.floor(p1.y / th) * 4 + Math.floor(p1.x / tw);
+            let tile = tiles[idx];
 
-            if(currentTile) {
-                if(currentTile.state === 'food') {
-                    resetTile(currentTile);
-                    p1.score++;
-                    document.getElementById('p1-score').innerText = p1.score;
-                    gameChannel.send({type:'broadcast', event:'eat', payload:{idx: myIdx, uid: currentUser.id, score: p1.score}});
-                } else if(currentTile.state === 'bomb' && p1.alive) {
+            if(tile && tile.state !== 'normal') {
+                if(tile.state === 'food') {
+                    p1.score++; document.getElementById('p1-score').innerText = p1.score;
+                    resetTile(tile);
+                    gameChannel.send({type:'broadcast', event:'eat', payload:{idx, uid: currentUser.id, score: p1.score}});
+                } else if(tile.state === 'bomb') {
                     p1.alive = false;
                     gameChannel.send({type:'broadcast', event:'death', payload:{uid: currentUser.id}});
                     checkEndGame();
                 }
             }
 
-            gameChannel.send({ type: 'broadcast', event: 'move', payload: { uid: currentUser.id, x: p1.x, y: p1.y, angle: p1.angle, walking: p1.walking } });
+            // Network Broadcast (Throttled)
+            const now = Date.now();
+            if (now - lastBroadcastTime > 45) {
+                gameChannel.send({ type: 'broadcast', event: 'move', payload: { uid: currentUser.id, x: Math.round(p1.x), y: Math.round(p1.y), angle: p1.angle, walking: p1.walking } });
+                lastBroadcastTime = now;
+            }
         }
 
-        // --- ENDGAME ---
         async function checkEndGame(timeUp = false) {
-            if(!gameActive && !timeUp) return; // Prevent double firing
-            gameActive = false; joystick.active = false; stick.style.transform = `translate(0,0)`; p1.walking = false;
-
+            if(!gameActive && !timeUp) return;
+            gameActive = false;
+            
             let result = 'tie';
+            if(!p1.alive && p2.alive) result = 'lose';
+            else if(p1.alive && !p2.alive) result = 'win';
+            else if(p1.score > p2.score) result = 'win';
+            else if(p1.score < p2.score) result = 'lose';
 
-            // Determine Winner
-            if(!p1.alive && p2.alive) { result = 'lose'; }
-            else if(p1.alive && !p2.alive) { result = 'win'; }
-            else if(!p1.alive && !p2.alive) { result = 'tie'; }
-            else {
-                if(p1.score > p2.score) { result = 'win'; }
-                else if(p1.score < p2.score) { result = 'lose'; }
-                else { result = 'tie'; }
-            }
-
-            // Distribute Rewards & Alert
             if(result === 'win') {
                 const winnings = Math.floor(wager * 1.8);
-                
-                // Update coins in DB if real user
-                if(currentUser.id && !currentUser.id.startsWith('test_')) {
-                    try {
-                        const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
-                        if (data) {
-                            await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
-                        }
-                    } catch(e) { console.error("Could not update coins:", e); }
+                if(!currentUser.id.startsWith('anon_')) {
+                    const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
+                    if (data) await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
                 }
-
-                Swal.fire({ 
-                    title: "YOU WIN!", 
-                    text: `You outplayed your opponent and won ${winnings} coins!`, 
-                    icon: "success", 
-                    background: '#0f172a', color: '#fff', confirmButtonColor: '#3b82f6', confirmButtonText: 'Home' 
-                }).then(() => window.location.replace('index.html'));
-
-            } else if(result === 'lose') {
-                Swal.fire({ 
-                    title: "YOU LOST!", 
-                    text: "Your opponent claimed the victory. Better luck next time.", 
-                    icon: "error", 
-                    background: '#0f172a', color: '#fff', confirmButtonColor: '#ef4444', confirmButtonText: 'Home' 
-                }).then(() => window.location.replace('index.html'));
-
+                Swal.fire({ title: "VICTORY!", text: `You earned ${winnings} coins!`, icon: "success", background: '#0f172a', color: '#fff' }).then(() => window.location.replace('index.html'));
             } else {
-                Swal.fire({ 
-                    title: "TIE GAME!", 
-                    text: "You both tied. No one wins the pot.", 
-                    icon: "info", 
-                    background: '#0f172a', color: '#fff', confirmButtonColor: '#64748b', confirmButtonText: 'Home' 
-                }).then(() => window.location.replace('index.html'));
+                Swal.fire({ title: result === 'lose' ? "DEFEAT" : "TIE", text: "Match Over", icon: result === 'lose' ? "error" : "info", background: '#0f172a', color: '#fff' }).then(() => window.location.replace('index.html'));
             }
         }
 
-        // --- RENDER ---
         function drawPlayer(x, y, angle, isWalking, isAlive, color) {
             ctx.save(); ctx.translate(x, y);
-            if (!isAlive) { ctx.font = '24px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText("💥", 0, 0); ctx.restore(); return; }
+            if (!isAlive) { ctx.font = '24px Inter'; ctx.textAlign = 'center'; ctx.fillText("💥", 0, 5); ctx.restore(); return; }
             ctx.rotate(angle);
-            let swing = isWalking ? Math.sin(Date.now() / 80) * 10 : 0; 
+            let swing = isWalking ? Math.sin(Date.now() / 80) * 8 : 0; 
             ctx.fillStyle = color;
             ctx.beginPath(); ctx.arc(swing, -12, 5, 0, Math.PI*2); ctx.fill(); 
             ctx.beginPath(); ctx.arc(-swing, 12, 5, 0, Math.PI*2); ctx.fill(); 
-            ctx.shadowBlur = 10; ctx.shadowColor = color;
-            ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI*2); ctx.fill();
-            ctx.shadowBlur = 0; ctx.fillStyle = '#fca5a5'; 
-            ctx.beginPath(); ctx.arc(4, 0, 6, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 15; ctx.shadowColor = color;
+            ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
             ctx.restore();
         }
 
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             updateMovement();
+            p2.x += (p2.targetX - p2.x) * 0.25; p2.y += (p2.targetY - p2.y) * 0.25; // Smooth Interp
             drawPlayer(p2.x, p2.y, p2.angle, p2.walking, p2.alive, p2.color);
             drawPlayer(p1.x, p1.y, p1.angle, p1.walking, p1.alive, p1.color);
             requestAnimationFrame(render);

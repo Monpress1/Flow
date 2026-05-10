@@ -192,16 +192,18 @@
         }
 
         async function loadMessages() {
+            // Updated to fetch the LATEST 50 and then reverse for chronological display
             const { data, error } = await flow.from('global_messages')
                 .select('*, sender:sender_id(username, avatar_url)')
                 .or(`recipient_id.is.null,recipient_id.eq.${user.id},sender_id.eq.${user.id}`)
-                .order('created_at', { ascending: true })
+                .order('created_at', { ascending: false }) 
                 .limit(50);
             
             if (data) {
                 const container = document.getElementById('chat-box');
                 container.innerHTML = '';
-                data.forEach(msg => renderMessage(msg));
+                // Reverse it so the oldest message is at the top
+                data.reverse().forEach(msg => renderMessage(msg));
             }
         }
 
@@ -210,7 +212,7 @@
             const container = document.getElementById('chat-box');
             
             const senderName = msg.sender?.username || (isMe ? myProfile?.username : "User");
-            const senderAvatar = msg.sender?.avatar_url || ""; // Strictly strictly DB fetched, no DiceBear.
+            const senderAvatar = msg.sender?.avatar_url || "";
 
             const div = document.createElement('div');
             div.className = `msg-bubble flex gap-3 ${isMe ? 'flex-row-reverse ml-auto' : ''}`;
@@ -258,16 +260,16 @@
             clearTag();
             
             const { error } = await flow.from('global_messages').insert([payload]);
-            if (!error) {
-                // Log private messages and mentions to activity table
+            if (error) {
+                // Fixed error logging to be readable
+                console.error("Send Error Message:", error.message);
+                console.error("Full Error Context:", error);
+            } else {
                 if (payload.recipient_id) {
                     await logActivity('private_chat', `Started private chat with ${selectedUser.name}`, 0);
-                    await logActivity('private_chat', `Received private chat from ${myProfile.username}`, 0, selectedUser.id);
                 } else if (content.includes('@')) {
                     await logActivity('mention', `Mentioned in a message`, 0);
                 }
-            } else {
-                console.error("Send Error:", error);
             }
         }
 
@@ -370,7 +372,6 @@
             });
 
             if (!error) {
-                // Deduct locally and update UI instantly
                 myProfile.coins -= amt;
                 document.getElementById('balance').innerText = parseFloat(myProfile.coins).toLocaleString();
 
@@ -381,7 +382,7 @@
                 }]);
                 closeModal('gift-modal');
             } else {
-                console.error("Gift Error: ", error);
+                console.error("Gift Error: ", error.message);
                 alert("Transaction failed.");
             }
         }

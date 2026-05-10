@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flow | Admin Command Center v3.0</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --glass: rgba(15, 23, 42, 0.8);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent: #3b82f6;
+        }
+
+        body { 
+            background: #020617; 
+            color: white; 
+            font-family: 'Outfit', sans-serif; 
+            min-height: 100vh;
+            margin: 0;
+            padding-bottom: 80px; /* Space for mobile nav */
+        }
+
+        /* Responsive Sidebar/Nav */
+        .admin-nav {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 70px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        @media (min-width: 1024px) {
+            body { padding-bottom: 0; display: flex; flex-direction: row; }
+            .admin-nav {
+                position: sticky;
+                top: 0;
+                width: 320px;
+                height: 100vh;
+                flex-direction: column;
+                justify-content: flex-start;
+                border-top: none;
+                border-right: 1px solid var(--glass-border);
+                padding: 2rem;
+                gap: 2rem;
+            }
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 1.25rem;
+            transition: all 0.3s ease;
+        }
+
+        /* Nav Items */
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            transition: 0.2s;
+        }
+
+        @media (min-width: 1024px) {
+            .nav-item {
+                flex-direction: row;
+                width: 100%;
+                padding: 1rem 1.5rem;
+                border-radius: 1rem;
+                font-size: 14px;
+                gap: 12px;
+            }
+            .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+        }
+
+        .nav-item.active { color: var(--accent); }
+        @media (min-width: 1024px) {
+            .nav-item.active { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59,130,246,0.3); }
+        }
+
+        /* User List Collapsible */
+        .user-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            opacity: 0;
+        }
+        .user-row.expanded .user-details {
+            max-height: 600px;
+            opacity: 1;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .status-pill {
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .pill-pending { background: #eab30822; color: #eab308; border: 1px solid #eab30844; }
+
+        input, select {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            color: white !important;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="admin-nav">
+        <div class="hidden lg:flex items-center gap-3 mb-10 w-full">
+            <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-crown text-white"></i>
+            </div>
+            <span class="text-xl font-black italic">FLOW <span class="text-blue-500">ADMIN</span></span>
+        </div>
+
+        <div onclick="switchTab('users')" id="tab-users" class="nav-item active">
+            <i class="fa-solid fa-users text-xl lg:text-base"></i>
+            <span>Users</span>
+        </div>
+        <div onclick="switchTab('withdrawals')" id="tab-withdrawals" class="nav-item">
+            <i class="fa-solid fa-money-bill-transfer text-xl lg:text-base"></i>
+            <span>Payouts</span>
+        </div>
+        <div onclick="switchTab('broadcasts')" id="tab-broadcasts" class="nav-item">
+            <i class="fa-solid fa-bullhorn text-xl lg:text-base"></i>
+            <span>Alerts</span>
+        </div>
+        
+        <div onclick="window.location.href='index.html'" class="nav-item text-red-400">
+            <i class="fa-solid fa-power-off text-xl lg:text-base"></i>
+            <span>Exit</span>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-4 lg:p-12 w-full max-w-7xl mx-auto">
+
+        <section id="view-users" class="admin-view space-y-6">
+            <header>
+                <h2 class="text-3xl lg:text-5xl font-black">Directory</h2>
+                <p class="text-slate-500 text-sm">Manage all player accounts and balances.</p>
+            </header>
+            <div id="users-grid" class="space-y-3">
+                <div class="py-20 text-center"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-500"></i></div>
+            </div>
+        </section>
+
+        <section id="view-withdrawals" class="admin-view hidden space-y-6">
+            <header>
+                <h2 class="text-3xl lg:text-5xl font-black">Payout Queue</h2>
+                <p class="text-slate-500 text-sm">Process pending user withdrawals.</p>
+            </header>
+            <div id="payout-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </div>
+        </section>
+
+        <section id="view-broadcasts" class="admin-view hidden space-y-6">
+            <header>
+                <h2 class="text-3xl lg:text-5xl font-black">Broadcast</h2>
+                <p class="text-slate-500 text-sm">Send messages to the global activity feed.</p>
+            </header>
+
+            <div class="glass-card p-6 space-y-4">
+                <input type="text" id="bc-title" class="w-full p-4 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Announcement Title...">
+                <input type="number" id="bc-amount" class="w-full p-4 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Value (Optional)...">
+                <button onclick="publishBroadcast()" class="w-full bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-black transition-all">
+                    PUSH NOTIFICATION
+                </button>
+            </div>
+
+            <div id="broadcast-list" class="space-y-3">
+                </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Supabase Initialization
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flow = window.supabase.createClient(SB_URL, SB_KEY);
+
+        // UI Tabs Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.admin-view').forEach(v => v.classList.add('hidden'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            if (tabId === 'users') loadUsers();
+            if (tabId === 'withdrawals') loadWithdrawals();
+            if (tabId === 'broadcasts') loadBroadcasts();
+        }
+
+        // --- USER DIRECTORY ---
+        async function loadUsers() {
+            const container = document.getElementById('users-grid');
+            const { data: users, error } = await flow.from('profiles').select('*').order('coins', { ascending: false });
+
+            if (error) return console.error(error);
+            
+            container.innerHTML = users.map(u => `
+                <div class="glass-card p-4 user-row" onclick="this.classList.toggle('expanded')">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <img src="${u.avatar_url}" class="w-10 h-10 rounded-full border border-white/10">
+                            <div>
+                                <h4 class="font-bold text-sm">${u.username}</h4>
+                                <p class="text-[10px] text-blue-400 font-black">${(u.coins || 0).toLocaleString()} COINS</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-down text-slate-600 transition-transform"></i>
+                    </div>
+                    <div class="user-details text-xs space-y-2" onclick="event.stopPropagation()">
+                        <p class="text-slate-500">ID: <span class="text-white font-mono">${u.id}</span></p>
+                        <p class="text-slate-500">Location: <span class="text-white">${u.current_location || 'Unknown'}</span></p>
+                        <p class="text-slate-500">Joined: <span class="text-white">${new Date(u.created_at).toLocaleDateString()}</span></p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- WITHDRAWAL QUEUE ---
+        async function loadWithdrawals() {
+            const container = document.getElementById('payout-grid');
+            const { data, error } = await flow
+                .from('transactions')
+                .select('*, profiles(username, avatar_url)')
+                .eq('type', 'withdrawal')
+                .eq('status', 'pending');
+
+            if (error) return console.error(error);
+            if (!data.length) return container.innerHTML = '<p class="text-slate-500 col-span-full text-center py-10">No pending payouts.</p>';
+
+            container.innerHTML = data.map(tx => `
+                <div class="glass-card p-5 border-l-4 border-l-yellow-500">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center gap-3">
+                            <img src="${tx.profiles?.avatar_url}" class="w-8 h-8 rounded-full">
+                            <span class="font-bold text-sm">${tx.profiles?.username}</span>
+                        </div>
+                        <span class="status-pill pill-pending">Pending</span>
+                    </div>
+                    <div class="bg-black/30 p-4 rounded-xl mb-4 space-y-1 text-[11px]">
+                        <p><span class="text-slate-500 uppercase font-black">Bank:</span> ${tx.metadata?.bank_name}</p>
+                        <p><span class="text-slate-500 uppercase font-black">Acct:</span> ${tx.metadata?.account_number}</p>
+                        <p><span class="text-slate-500 uppercase font-black">Name:</span> ${tx.metadata?.account_name}</p>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xl font-black text-green-400">${tx.amount.toLocaleString()}</span>
+                        <div class="flex gap-2">
+                            <button onclick="updateTxStatus('${tx.id}', 'rejected')" class="bg-white/5 px-4 py-2 rounded-lg text-[10px] font-bold">REJECT</button>
+                            <button onclick="updateTxStatus('${tx.id}', 'approved')" class="bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black">APPROVE</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function updateTxStatus(id, status) {
+            const { error } = await flow.from('transactions').update({ status: status }).eq('id', id);
+            if (error) {
+                Swal.fire('Failed', error.message, 'error');
+            } else {
+                Swal.fire('Updated', `Transaction ${status}`, 'success');
+                loadWithdrawals();
+            }
+        }
+
+        // --- BROADCAST SYSTEM ---
+        async function publishBroadcast() {
+            const title = document.getElementById('bc-title').value;
+            const amount = document.getElementById('bc-amount').value;
+
+            if (!title) return Swal.fire('Error', 'Message title is required', 'error');
+
+            const { error } = await flow.from('user_activity').insert([{
+                title: title,
+                amount: parseFloat(amount) || 0,
+                type: 'broadcast',
+                is_broadcast: true,
+                user_id: null
+            }]);
+
+            if (error) {
+                console.error("DB Error:", error);
+                Swal.fire('Error', error.message, 'error');
+            } else {
+                Swal.fire('Sent', 'Global broadcast live!', 'success');
+                document.getElementById('bc-title').value = '';
+                document.getElementById('bc-amount').value = '';
+                loadBroadcasts();
+            }
+        }
+
+        async function loadBroadcasts() {
+            const list = document.getElementById('broadcast-list');
+            const { data, error } = await flow.from('user_activity').select('*').eq('is_broadcast', true).order('created_at', { ascending: false });
+
+            if (error) return console.error(error);
+
+            list.innerHTML = data.map(bc => `
+                <div class="glass-card p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-bullhorn text-blue-500"></i>
+                        <div>
+                            <h5 class="font-bold text-sm">${bc.title}</h5>
+                            <p class="text-[9px] text-slate-500 uppercase">${new Date(bc.created_at).toLocaleString()}</p>
+                        </div>
+                    </div>
+                    <button onclick="deleteBroadcast('${bc.id}')" class="text-red-500 px-2"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `).join('');
+        }
+
+        async function deleteBroadcast(id) {
+            await flow.from('user_activity').delete().eq('id', id);
+            loadBroadcasts();
+        }
+
+        // Run on load
+        document.addEventListener('DOMContentLoaded', loadUsers);
+    </script>
+</body>
+</html>

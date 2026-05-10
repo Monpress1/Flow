@@ -101,7 +101,7 @@
 
         let currentUser, myRole, gameChannel;
         const sessionToken = Math.random().toString(36).substring(7);
-        
+
         let p1 = { x: 180, y: 0, alive: true, color: '#3b82f6' };
         let p2 = { x: 180, y: 0, alive: true, color: '#ef4444' };
         
@@ -109,7 +109,9 @@
         let gameActive = false;
         let survivalTime = 0;
         let speed = 6;
-        let spawnInterval;
+        let spawnInterval = null;
+        let survivalInterval = null;
+        let countdownStarted = false;
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -127,125 +129,226 @@
             p2.x = (canvas.width / 2) - 20;
 
             setupRealtime();
-
-            let count = 3;
-            const counterEl = document.getElementById('rules-countdown');
-            const interval = setInterval(() => {
-                count--;
-                if(count > 0) counterEl.innerText = count;
-                else {
-                    clearInterval(interval);
-                    document.getElementById('rules-overlay').style.opacity = '0';
-                    setTimeout(() => {
-                        document.getElementById('rules-overlay').style.display = 'none';
-                        if(myRole === 'host') startRace();
-                    }, 500);
-                }
-            }, 1000);
-
             requestAnimationFrame(render);
         }
 
-        function resize() { canvas.width = container.offsetWidth; canvas.height = container.offsetHeight; }
+        function resize() { 
+            canvas.width = container.offsetWidth; 
+            canvas.height = container.offsetHeight; 
+        }
 
         function setupRealtime() {
             gameChannel = flowClient.channel(matchId, { config: { presence: { key: currentUser.id + "_" + sessionToken } } });
 
             gameChannel
+                .on('presence', { event: 'sync' }, () => {
+                    const state = gameChannel.presenceState();
+                    const totalPlayers = Object.keys(state).length;
+
+                    if (totalPlayers >= 2) {
+                        document.getElementById('status-msg').innerText = "Both players connected";
+
+                        if (myRole === 'host' && !countdownStarted && !gameActive) {
+                            countdownStarted = true;
+                            startSyncedCountdown();
+                        }
+                    } else {
+                        document.getElementById('status-msg').innerText = "Syncing Players...";
+                    }
+                })
                 .on('presence', { event: 'leave' }, ({ leftPresences }) => {
                     if (gameActive && leftPresences.length > 0) handleWin("Opponent disconnected!");
                 })
-                .on('broadcast', { event: 'move' }, ({payload}) => {
-                    if(payload.uid !== (currentUser.id + "_" + sessionToken)) p2.x = payload.x;
+                .on('broadcast', { event: 'countdown' }, ({ payload }) => {
+                    const counterEl = document.getElementById('rules-countdown');
+
+                    if (payload.count > 0) {
+                        counterEl.innerText = payload.count;
+                    } else {
+                        counterEl.innerText = "GO!";
+                        document.getElementById('status-msg').innerText = "RACE!";
+                        document.getElementById('rules-overlay').style.opacity = '0';
+                        setTimeout(() => {
+                            document.getElementById('rules-overlay').style.display = 'none';
+                        }, 500);
+                    }
+                })
+                .on('broadcast', { event: 'move' }, ({ payload }) => {
+                    if (payload.uid !== (currentUser.id + "_" + sessionToken)) p2.x = payload.x;
                 })
                 .on('broadcast', { event: 'race_start' }, () => {
-                    gameActive = true;
-                    document.getElementById('status-msg').innerText = "RACE!";
-                    document.getElementById('p2-status').innerText = "RACING";
-                    setInterval(() => { if(gameActive) { survivalTime++; document.getElementById('time-val').innerText = survivalTime; speed += 0.08; } }, 1000);
+                    startLocalGame(false);
                 })
-                .on('broadcast', { event: 'spawn' }, ({payload}) => {
-                    obstacles.push({ x: payload.x, y: -80, width: 45, height: 80 });
+                .on('broadcast', { event: 'spawn' }, ({ payload }) => {
+                    if (payload.uid !== (currentUser.id + "_" + sessionToken)) {
+                        obstacles.push({ x: payload.x, y: -80, width: 45, height: 80 });
+                    }
                 })
-                .on('broadcast', { event: 'death' }, ({payload}) => {
-                    if(payload.uid !== (currentUser.id + "_" + sessionToken)) {
+                .on('broadcast', { event: 'death' }, ({ payload }) => {
+                    if (payload.uid !== (currentUser.id + "_" + sessionToken)) {
                         p2.alive = false;
                         document.getElementById('p2-status').innerText = "CRASHED";
                         checkRaceEnd();
                     }
                 })
                 .subscribe(async (status) => {
-                    if (status === 'SUBSCRIBED') await gameChannel.track({ online_at: new Date().toISOString() });
+                    if (status === 'SUBSCRIBED') {
+                        await gameChannel.track({ online_at: new Date().toISOString() });
+                    }
                 });
         }
 
-        function startRace() {
-    gameChannel.send({type:'broadcast', event:'race_start'});
-    gameActive = true;
-    document.getElementById('p1-status').innerText = "RACING";
-    
-    // Changed from 1000 to 2000 to reduce car frequency
-    spawnInterval = setInterval(() => {
-        if(!gameActive) return;
-        const laneX = [canvas.width*0.2, canvas.width*0.5, canvas.width*0.8][Math.floor(Math.random()*3)];
-        const finalX = laneX - 22;
-        gameChannel.send({type:'broadcast', event:'spawn', payload:{ x: finalX }});
-        obstacles.push({ x: finalX, y: -80, width: 45, height: 80 });
-    }, 2400); 
-}
+        function startSyncedCountdown() {
+            let count = 3;
 
-let joystick = { active: false, x: 0 };
-const stick = document.getElementById('joystick-stick');
-document.addEventListener('touchstart', e => { if(e.target.closest('#joystick-wrapper')) joystick.active = true; });
-document.addEventListener('touchmove', e => {
-    if(!joystick.active) return;
-    const wrap = document.getElementById('joystick-wrapper').getBoundingClientRect();
-    const touch = e.touches[0];
-    let dx = touch.clientX - (wrap.left + 60);
-    if(Math.abs(dx) > 40) dx = 40 * Math.sign(dx);
-    stick.style.transform = `translateX(${dx}px)`;
-    joystick.x = dx / 40;
-});
-document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = `translateX(0)`; joystick.x = 0; });
+            const interval = setInterval(() => {
+                gameChannel.send({
+                    type: 'broadcast',
+                    event: 'countdown',
+                    payload: { count }
+                });
+
+                if (count === 0) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        gameChannel.send({ type: 'broadcast', event: 'race_start' });
+                        startLocalGame(true);
+                    }, 250);
+                    return;
+                }
+
+                count--;
+            }, 1000);
+        }
+
+        function startLocalGame(isHostSpawner) {
+            if (gameActive) return;
+
+            gameActive = true;
+            survivalTime = 0;
+            speed = 6;
+            obstacles = [];
+            p1.alive = true;
+            p2.alive = true;
+
+            document.getElementById('p1-status').innerText = "RACING";
+            document.getElementById('p2-status').innerText = "RACING";
+            document.getElementById('status-msg').innerText = "RACE!";
+
+            document.getElementById('rules-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('rules-overlay').style.display = 'none';
+            }, 500);
+
+            if (survivalInterval) clearInterval(survivalInterval);
+            survivalInterval = setInterval(() => {
+                if (gameActive) {
+                    survivalTime++;
+                    document.getElementById('time-val').innerText = survivalTime;
+                    speed += 0.08;
+                }
+            }, 1000);
+
+            if (isHostSpawner) {
+                if (spawnInterval) clearInterval(spawnInterval);
+
+                spawnInterval = setInterval(() => {
+                    if (!gameActive) return;
+
+                    const laneX = [canvas.width * 0.2, canvas.width * 0.5, canvas.width * 0.8][Math.floor(Math.random() * 3)];
+                    const finalX = laneX - 22;
+                    const packetUid = currentUser.id + "_" + sessionToken;
+
+                    gameChannel.send({ type: 'broadcast', event: 'spawn', payload: { x: finalX, uid: packetUid } });
+                    obstacles.push({ x: finalX, y: -80, width: 45, height: 80 });
+                }, 2400);
+            }
+        }
+
+        function letOpponentKnowDeath() {
+            gameChannel.send({
+                type: 'broadcast',
+                event: 'death',
+                payload: { uid: currentUser.id + "_" + sessionToken }
+            });
+        }
+
+        let joystick = { active: false, x: 0 };
+        const stick = document.getElementById('joystick-stick');
+
+        document.addEventListener('touchstart', e => {
+            if (e.target.closest('#joystick-wrapper')) joystick.active = true;
+        });
+
+        document.addEventListener('touchmove', e => {
+            if (!joystick.active) return;
+            const wrap = document.getElementById('joystick-wrapper').getBoundingClientRect();
+            const touch = e.touches[0];
+            let dx = touch.clientX - (wrap.left + 60);
+            if (Math.abs(dx) > 40) dx = 40 * Math.sign(dx);
+            stick.style.transform = `translateX(${dx}px)`;
+            joystick.x = dx / 40;
+        });
+
+        document.addEventListener('touchend', () => { 
+            joystick.active = false; 
+            stick.style.transform = `translateX(0)`; 
+            joystick.x = 0; 
+        });
 
         function update() {
-            if(!gameActive || !p1.alive) return;
-            if(joystick.active) {
+            if (!gameActive || !p1.alive) return;
+
+            if (joystick.active) {
                 p1.x += joystick.x * 8;
-                if(p1.x < 5) p1.x = 5;
-                if(p1.x > canvas.width - 45) p1.x = canvas.width - 45;
+                if (p1.x < 5) p1.x = 5;
+                if (p1.x > canvas.width - 45) p1.x = canvas.width - 45;
             }
+
             obstacles.forEach((obs, index) => {
                 obs.y += speed;
-                if(p1.x < obs.x + obs.width && p1.x + 40 > obs.x && p1.y < obs.y + obs.height && p1.y + 70 > obs.y) {
+
+                if (
+                    p1.x < obs.x + obs.width &&
+                    p1.x + 40 > obs.x &&
+                    p1.y < obs.y + obs.height &&
+                    p1.y + 70 > obs.y
+                ) {
                     p1.alive = false;
-                    gameChannel.send({type:'broadcast', event:'death', payload:{uid: currentUser.id + "_" + sessionToken}});
+                    letOpponentKnowDeath();
                     document.getElementById('p1-status').innerText = "CRASHED";
                     checkRaceEnd();
                 }
-                if(obs.y > canvas.height + 100) obstacles.splice(index, 1);
+
+                if (obs.y > canvas.height + 100) obstacles.splice(index, 1);
             });
-            gameChannel.send({ type: 'broadcast', event: 'move', payload: { uid: currentUser.id + "_" + sessionToken, x: p1.x } });
+
+            gameChannel.send({ 
+                type: 'broadcast', 
+                event: 'move', 
+                payload: { uid: currentUser.id + "_" + sessionToken, x: p1.x } 
+            });
         }
 
         function checkRaceEnd() {
-            if(!p1.alive && !p2.alive) handleLoss("Tie! Both crashed.");
-            else if(!p1.alive) handleLoss("You crashed!");
-            else if(!p2.alive) handleWin("You outlasted them!");
+            if (!p1.alive && !p2.alive) handleLoss("Tie! Both crashed.");
+            else if (!p1.alive) handleLoss("You crashed!");
+            else if (!p2.alive) handleWin("You outlasted them!");
         }
 
         async function handleWin(msg) {
-            if(!gameActive) return;
+            if (!gameActive) return;
             gameActive = false;
-            clearInterval(spawnInterval);
 
-            // --- REWARD LOGIC FROM COIN FLIP ---
+            if (spawnInterval) clearInterval(spawnInterval);
+            if (survivalInterval) clearInterval(survivalInterval);
+
             const totalPot = wager * 2;
             const winnings = Math.floor(totalPot * 0.9); // 180% of original wager
 
             confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#fbbf24', '#3b82f6', '#ffffff'] });
 
-            if(currentUser.id && !currentUser.id.startsWith('anon_')) {
+            if (currentUser.id && !currentUser.id.startsWith('anon_')) {
                 const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
                 if (data) {
                     await flowClient.from('profiles').update({ coins: data.coins + winnings }).eq('id', currentUser.id);
@@ -264,9 +367,12 @@ document.addEventListener('touchend', () => { joystick.active = false; stick.sty
         }
 
         function handleLoss(msg) {
-            if(!gameActive) return;
+            if (!gameActive) return;
             gameActive = false;
-            clearInterval(spawnInterval);
+
+            if (spawnInterval) clearInterval(spawnInterval);
+            if (survivalInterval) clearInterval(survivalInterval);
+
             Swal.fire({
                 title: 'DEFEAT 💀',
                 text: msg,
@@ -297,8 +403,8 @@ document.addEventListener('touchend', () => { joystick.active = false; stick.sty
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             update();
             obstacles.forEach(drawObstacle);
-            if(p2.alive) drawCar(p2.x, p2.y, p2.color, true); 
-            if(p1.alive) drawCar(p1.x, p1.y, p1.color, false);
+            if (p2.alive) drawCar(p2.x, p2.y, p2.color, true); 
+            if (p1.alive) drawCar(p1.x, p1.y, p1.color, false);
             requestAnimationFrame(render);
         }
 

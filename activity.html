@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow | Activity Ledger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet">
+    <style>
+        body { background: #020617; color: white; font-family: 'Outfit', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        
+        /* High-end Timeline Style */
+        .timeline-item {
+            position: relative;
+            padding-left: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 0.75rem;
+            top: 0;
+            bottom: -1.5rem;
+            width: 2px;
+            background: linear-gradient(to bottom, #3b82f6 0%, transparent 100%);
+        }
+        .timeline-item:last-child::before { display: none; }
+        
+        .dot {
+            position: absolute;
+            left: 0.35rem;
+            top: 0.5rem;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            background: #020617;
+            border: 2px solid #3b82f6;
+            z-index: 10;
+        }
+
+        .win-glow { border-color: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.5); }
+        .loss-glow { border-color: #ef4444; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-item { animation: fadeIn 0.3s ease forwards; }
+    </style>
+</head>
+<body class="max-w-md mx-auto pb-10">
+
+    <header class="p-6 flex items-center justify-between sticky top-0 bg-[#020617]/80 backdrop-blur-md z-50">
+        <button onclick="window.history.back()" class="w-10 h-10 rounded-xl glass flex items-center justify-center">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <h1 class="text-sm font-black uppercase tracking-widest">Transaction History</h1>
+        <div class="w-10"></div>
+    </header>
+
+    <div class="px-6">
+        <div id="broadcast-container" class="mb-8 space-y-3"></div>
+
+        <div id="activity-feed">
+            <div class="flex flex-col gap-4 animate-pulse">
+                <div class="h-20 bg-white/5 rounded-2xl w-full"></div>
+                <div class="h-20 bg-white/5 rounded-2xl w-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
+        const flow = window.supabase.createClient(SB_URL, SB_KEY);
+
+        async function loadAll() {
+            const { data: { session } } = await flow.auth.getSession();
+            if (!session) return;
+            const user = session.user;
+
+            // Load History
+            const { data: activities } = await flow
+                .from('user_activity')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('is_broadcast', false)
+                .order('created_at', { ascending: false })
+                .limit(50); // Get recent 50
+
+            const feed = document.getElementById('activity-feed');
+            feed.innerHTML = '';
+
+            if (!activities || activities.length === 0) {
+                feed.innerHTML = '<p class="text-center text-slate-500 py-10">No transactions recorded yet.</p>';
+            } else {
+                activities.forEach(act => {
+                    const isWin = act.amount > 0;
+                    const date = new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    const div = document.createElement('div');
+                    div.className = "timeline-item animate-item";
+                    div.innerHTML = `
+                        <div class="dot ${isWin ? 'win-glow' : 'loss-glow'}"></div>
+                        <div class="glass p-4 rounded-2xl flex justify-between items-center">
+                            <div>
+                                <p class="text-xs font-bold text-white">${act.title}</p>
+                                <p class="text-[10px] text-slate-500 font-bold mt-1">${date}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-black ${isWin ? 'text-green-400' : 'text-red-400'}">
+                                    ${isWin ? '+' : ''}${act.amount.toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                    feed.appendChild(div);
+                });
+            }
+
+            // Load Broadcasts (same as before)
+            const { data: bc } = await flow.from('user_activity').select('*').eq('is_broadcast', true);
+            const bcContainer = document.getElementById('broadcast-container');
+            bcContainer.innerHTML = (bc || []).map(b => `
+                <div class="bg-blue-600/20 border border-blue-500/30 p-4 rounded-2xl flex gap-3 items-center">
+                    <i class="fa-solid fa-bullhorn text-blue-400"></i>
+                    <p class="text-xs font-bold">${b.title}</p>
+                </div>
+            `).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', loadAll);
+    </script>
+</body>
+</html>
