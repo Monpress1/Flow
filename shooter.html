@@ -147,7 +147,9 @@
         const params = new URLSearchParams(window.location.search);
         const matchId = params.get('match') || 'tank_test_match';
         const myId = params.get('user') || 'user_' + Math.floor(Math.random() * 1000);
+        
         const role = params.get('role') || (Math.random() > 0.5 ? 'host' : 'guest');
+const wager = parseInt(params.get('wager')) || 100;
 
         // --- THEME GENERATION (Deterministic based on Match ID) ---
         const THEMES = [
@@ -575,33 +577,78 @@
         }
 
         async function finalizeGame(result) {
-            if (result === 'victory') {
-                confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } });
-                
-                // --- ADD YOUR WALLET / BLOCKCHAIN REWARD LOGIC HERE --- 
-                
-                Swal.fire({
-                    title: 'TARGET DESTROYED',
-                    text: `You won! 180 Coins added to your wallet.`,
-                    icon: 'success',
-                    background: '#020617', color: '#fff',
-                    confirmButtonText: 'Claim & Exit'
-                }).then(() => {
-                    window.location.replace('index.html');
-                });
-            } else {
-                Swal.fire({
-                    title: 'ARMOR BREACHED',
-                    text: `You were destroyed. No rewards.`,
-                    icon: 'error',
-                    background: '#020617', color: '#fff',
-                    confirmButtonText: 'Return to Base'
-                }).then(() => {
-                    window.location.replace('index.html');
-                });
+    // Kill local player HP to instantly stop auto-shooting and loop inputs
+    me.hp = 0; 
+    
+    // Dynamic math logic: Calculate the pot and deduct a 10% platform fee (rake)
+    const totalPot = wager * 2;
+    const winnings = Math.floor(totalPot * 0.9);
+
+    if (result === 'victory') {
+    confetti({
+        particleCount: 200,
+        spread: 90,
+        origin: { y: 0.6 }
+    });
+
+    try {
+        // Get authenticated user directly from Supabase
+        const {
+            data: { user },
+            error: authError
+        } = await arenaClient.auth.getUser();
+
+        if (authError) {
+            console.error("Auth error:", authError);
+        }
+
+        if (user) {
+            // Get current balance
+            const { data: profile, error: fetchError } = await arenaClient
+                .from('profiles')
+                .select('coins')
+                .eq('id', user.id)
+                .single();
+
+            if (fetchError) {
+                console.error("Fetch profile error:", fetchError);
+            }
+
+            if (profile) {
+                const newBalance = (profile.coins || 0) + winnings;
+
+                const { error: updateError } = await arenaClient
+                    .from('profiles')
+                    .update({
+                        coins: newBalance
+                    })
+                    .eq('id', user.id);
+
+                if (updateError) {
+                    console.error("Wallet update failed:", updateError);
+                } else {
+                    console.log("Coins added successfully");
+                }
             }
         }
 
+    } catch (err) {
+        console.error("Reward system failed:", err);
+    }
+
+    Swal.fire({
+        title: 'TARGET DESTROYED',
+        text: `You won! ${winnings} Coins added to your wallet.`,
+        icon: 'success',
+        background: '#020617',
+        color: '#fff',
+        confirmButtonColor: '#3b82f6',
+        confirmButtonText: 'Claim & Exit'
+    }).then(() => {
+        window.location.replace('index.html');
+    });
+}
+}
         init();
     </script>
 </body>

@@ -150,36 +150,54 @@
         const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
         const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
 
-        // --- GAME STATE ---
-        const params = new URLSearchParams(window.location.search);
-        const matchId = params.get('match') || 'tap_test_match';
-        const hostId = params.get('host');
-        const guestId = params.get('guest');
-        
-        let currentUser = null;
-        let myRole = ""; 
-        let scores = { host: 0, guest: 0 };
-        let gameActive = false;
-        let timeLeft = 60;
-        let timerInterval;
+      // --- GAME STATE ---
+const params = new URLSearchParams(window.location.search);
+const matchId = params.get('match') || 'tap_test_match';
+const wager = parseInt(params.get('wager')) || 100; // Added wager
+const hostId = params.get('host');
+const guestId = params.get('guest');
+let currentUser;
+let myRole;
+let gameActive = false;
+let timeLeft = 60;
+let timerInterval;
 
-        const TOTAL_COINS = 5;
-        const COIN_SIZE = 50; 
+const TOTAL_COINS = 15;
+const COIN_SIZE = 50;
 
-        async function init() {
-            const { data: { session } } = await flowClient.auth.getSession();
-            currentUser = session ? session.user : { id: hostId }; // Fallback for testing
-            myRole = currentUser.id === hostId ? "host" : "guest";
-            
-            await fetchPlayerProfiles();
-            buildArena();
-            setupRealtime();
-            
-            if (myRole === 'host') {
-                document.getElementById('start-btn').classList.remove('hidden');
-                document.getElementById('status-text').innerText = "YOU ARE THE HOST";
-            }
-        }
+const scores = {
+    host: 0,
+    guest: 0
+};
+
+// Call this inside your init() function
+function applyAntiZoomFix() {
+    // Prevents double-tap to zoom on mobile
+    document.body.style.touchAction = 'manipulation';
+    const metaViewport = document.querySelector('meta[name="viewport"]');
+    if (metaViewport) {
+        metaViewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    }
+}
+
+// Update your init function
+async function init() {
+    applyAntiZoomFix(); // Apply the zoom fix immediately
+    
+    const { data: { session } } = await flowClient.auth.getSession();
+    currentUser = session ? session.user : { id: hostId }; 
+    myRole = currentUser.id === hostId ? "host" : "guest";
+    
+    await fetchPlayerProfiles();
+    buildArena();
+    setupRealtime();
+    
+    if (myRole === 'host') {
+        document.getElementById('start-btn').classList.remove('hidden');
+        document.getElementById('status-text').innerText = "YOU ARE THE HOST";
+    }
+}
+
 
         async function fetchPlayerProfiles() {
             const getFallbackAvatar = (name) => `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff&bold=true`;
@@ -234,27 +252,60 @@
 
         // --- REALTIME ---
         function setupRealtime() {
-            const channel = flowClient.channel(matchId);
-            channel
-                .on('broadcast', { event: 'start_game' }, () => {
-                    executeCountdown();
-                })
-                .on('broadcast', { event: 'tap' }, ({ payload }) => {
-                    syncTap(payload);
-                })
-                .on('broadcast', { event: 'chat' }, ({ payload }) => {
-                    showMarquee(`${payload.sender}: ${payload.msg}`);
-                })
-                .subscribe();
 
-            window.gameChannel = channel;
-        }
+    const channel = flowClient.channel(matchId);
+
+    channel
+        .on('broadcast', { event: 'start_game' }, async () => {
+
+            // Ensure arena fully exists first
+            if (!document.getElementById('coin-0')) {
+                buildArena();
+            }
+
+            // Small sync delay
+            setTimeout(() => {
+                executeCountdown();
+            }, 300);
+
+        })
+
+        .on('broadcast', { event: 'tap' }, ({ payload }) => {
+            syncTap(payload);
+        })
+
+        .on('broadcast', { event: 'chat' }, ({ payload }) => {
+            showMarquee(`${payload.sender}: ${payload.msg}`);
+        })
+
+        .subscribe((status) => {
+
+            console.log("Realtime Status:", status);
+
+            if (status === 'SUBSCRIBED') {
+
+                document.getElementById('status-text').innerText =
+                    myRole === 'host'
+                        ? 'YOU ARE THE HOST'
+                        : 'CONNECTED TO HOST';
+            }
+        });
+
+    window.gameChannel = channel;
+}
 
         // --- GAME LOGIC ---
         function triggerStartGame() {
-            window.gameChannel.send({ type: 'broadcast', event: 'start_game' });
-            executeCountdown();
-        }
+
+    // Start locally immediately
+    executeCountdown();
+
+    // Tell guest to start
+    window.gameChannel.send({
+        type: 'broadcast',
+        event: 'start_game'
+    });
+}
 
         function executeCountdown() {
             document.getElementById('start-btn').classList.add('hidden');
@@ -371,43 +422,129 @@
             }, 1000);
         }
 
-        function finalizeGame(winnerRole) {
-            if (winnerRole === 'tie') {
-                Swal.fire({
-                    title: 'IT\'S A TIE!',
-                    text: `Both tapped ${scores.host} times!`,
-                    icon: 'info',
-                    background: '#0f172a',
-                    color: '#ffffff',
-                    confirmButtonColor: '#3b82f6'
-                }).then(() => window.location.replace('index.html'));
-                return;
+        async function finalizeGame(winnerRole) {
+
+    // Prevent duplicate payouts
+    if (window.gameFinished) return;
+    window.gameFinished = true;
+
+    // Calculate Pot and Winnings
+    const totalPot = wager * 2;
+    const winnings = Math.floor(totalPot * 0.9);
+
+    // Tie
+    if (winnerRole === 'tie') {
+
+        Swal.fire({
+            title: 'IT\'S A TIE!',
+            text: `Both tapped ${scores.host} times! Wagers refunded.`,
+            icon: 'info',
+            background: '#0f172a',
+            color: '#ffffff',
+            confirmButtonColor: '#3b82f6'
+        }).then(() => {
+            window.location.replace('index.html');
+        });
+
+        return;
+    }
+
+    // WINNER
+    if (myRole === winnerRole) {
+
+        confetti({
+            particleCount: 200,
+            spread: 90,
+            origin: { y: 0.6 },
+            colors: ['#fbbf24', '#3b82f6', '#ffffff']
+        });
+
+        try {
+
+            // SAFE AUTH CHECK
+            const {
+                data: { user },
+                error: authError
+            } = await flowClient.auth.getUser();
+
+            if (authError) {
+                console.error("Auth error:", authError);
             }
 
-            if (myRole === winnerRole) {
-                confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 }, colors: ['#fbbf24', '#3b82f6', '#ffffff'] });
-                Swal.fire({
-                    title: '🎉 YOU WIN! 🎉',
-                    text: `You dominated with ${scores[myRole]} taps!`,
-                    icon: 'success',
-                    background: '#0f172a',
-                    color: '#ffffff',
-                    confirmButtonColor: '#3b82f6',
-                    customClass: { popup: 'border border-blue-500/30' }
-                }).then(() => window.location.replace('index.html'));
-            } else {
-                Swal.fire({
-                    title: 'DEFEAT 💀',
-                    text: `Opponent beat you with ${scores[winnerRole]} taps.`,
-                    icon: 'error',
-                    background: '#0f172a',
-                    color: '#ffffff',
-                    confirmButtonColor: '#ef4444',
-                    customClass: { popup: 'border border-red-500/30' }
-                }).then(() => window.location.replace('index.html'));
+            // ONLY reward real authenticated users
+            if (user && !user.id.startsWith('user_')) {
+
+                // Fetch current coins
+                const { data: profile, error: fetchError } = await flowClient
+                    .from('profiles')
+                    .select('coins')
+                    .eq('id', user.id)
+                    .single();
+
+                if (fetchError) {
+                    console.error("Profile fetch failed:", fetchError);
+                }
+
+                if (profile) {
+
+                    const currentCoins = profile.coins || 0;
+                    const newBalance = currentCoins + winnings;
+
+                    // Update wallet
+                    const { error: updateError } = await flowClient
+                        .from('profiles')
+                        .update({
+                            coins: newBalance
+                        })
+                        .eq('id', user.id);
+
+                    if (updateError) {
+                        console.error("Wallet update failed:", updateError);
+                    } else {
+                        console.log("Coins rewarded successfully");
+                    }
+                }
             }
+
+        } catch (err) {
+            console.error("Reward system crashed:", err);
         }
 
+        Swal.fire({
+            title: '🎉 YOU WIN! 🎉',
+            text: `You dominated with ${scores[myRole]} taps! Won ${winnings} coins!`,
+            icon: 'success',
+            background: '#0f172a',
+            color: '#ffffff',
+            confirmButtonColor: '#3b82f6',
+            confirmButtonText: 'Collect Winnings',
+            customClass: {
+                popup: 'border border-blue-500/30'
+            }
+        }).then(() => {
+            window.location.replace('index.html');
+        });
+
+    } else {
+
+        // LOSER
+        Swal.fire({
+            title: 'DEFEAT 💀',
+            text: `Opponent beat you with ${scores[winnerRole]} taps. Wager lost.`,
+            icon: 'error',
+            background: '#0f172a',
+            color: '#ffffff',
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Leave Arena',
+            customClass: {
+                popup: 'border border-red-500/30'
+            }
+        }).then(() => {
+            window.location.replace('index.html');
+        });
+
+    }
+}
         // --- CHAT SYSTEM ---
         function toggleChat() {
             const container = document.getElementById('chat-input-container');

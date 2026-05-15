@@ -274,22 +274,59 @@
         }
 
         function setupRealtime() {
-            flow.channel('global_chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_messages' }, async (payload) => {
-                const { data } = await flow.from('global_messages')
-                    .select('*, sender:sender_id(username, avatar_url)')
-                    .eq('id', payload.new.id)
-                    .single();
-                
-                if (data && (!data.recipient_id || data.recipient_id === user.id || data.sender_id === user.id)) {
-                    renderMessage(data);
-                }
-            }).subscribe();
 
-            flow.channel('global_alerts').on('broadcast', { event: 'incoming_challenge' }, ({ payload }) => {
-                if (payload.targetId === user.id) showChallenge(payload);
-            }).subscribe();
+    flow.channel('global_chat')
+    .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'global_messages'
+    }, async (payload) => {
+
+        const { data } = await flow
+            .from('global_messages')
+            .select('*, sender:sender_id(username, avatar_url)')
+            .eq('id', payload.new.id)
+            .single();
+
+        if (
+            data &&
+            (
+                !data.recipient_id ||
+                data.recipient_id === user.id ||
+                data.sender_id === user.id
+            )
+        ) {
+            renderMessage(data);
         }
 
+    })
+    .subscribe();
+
+
+    flow.channel('global_alerts')
+
+    .on('broadcast', {
+        event: 'incoming_challenge'
+    }, ({ payload }) => {
+
+        if (payload.targetId === user.id) {
+            showChallenge(payload);
+        }
+    })
+
+    .on('broadcast', {
+        event: 'challenge_response'
+    }, ({ payload }) => {
+
+        if (payload.challengerId === user.id && payload.accepted) {
+
+            window.location.href =
+                `lobby.html?match=${payload.matchId}&opp=${payload.targetId}&role=host`;
+        }
+    })
+
+    .subscribe();
+}
         function setupPresence() {
             const chan = flow.channel('online_users');
             chan.on('presence', { event: 'sync' }, () => {
@@ -388,14 +425,32 @@
         }
 
         function showChallenge(payload) {
-            const p = document.getElementById('challenge-popup');
-            document.getElementById('challenger-img').src = payload.challengerAvatar;
-            document.getElementById('challenger-name').innerText = payload.challengerName;
-            p.classList.add('active');
-            document.getElementById('accept-challenge').onclick = () => {
-                window.location.href = `lobby.html?match=${payload.matchId}&opp=${payload.challengerId}&role=guest`;
-            };
-        }
+    const p = document.getElementById('challenge-popup');
+
+    document.getElementById('challenger-img').src = payload.challengerAvatar;
+    document.getElementById('challenger-name').innerText = payload.challengerName;
+
+    p.classList.add('active');
+
+    document.getElementById('accept-challenge').onclick = async () => {
+
+        // SEND ACCEPTANCE BACK TO HOST
+        await flow.channel('global_alerts').send({
+            type: 'broadcast',
+            event: 'challenge_response',
+            payload: {
+                challengerId: payload.challengerId,
+                targetId: user.id,
+                accepted: true,
+                matchId: payload.matchId
+            }
+        });
+
+        // THEN REDIRECT
+        window.location.href =
+            `lobby.html?match=${payload.matchId}&opp=${payload.challengerId}&role=guest`;
+    };
+}
 
         function hideChallenge() { document.getElementById('challenge-popup').classList.remove('active'); }
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }

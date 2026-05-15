@@ -110,7 +110,7 @@
 
     <div id="marquee-container"></div>
 
-    <div class="space-y-4 mb-4 mt-4 relative z-10">
+    <div class="space-y-4 mb-4 -mt-9 relative z-10">
         <div class="flex items-center gap-2">
             <div id="chat-input-container" class="hidden flex-1">
                 <input type="text" id="chat-input" placeholder="Type a message..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors">
@@ -130,7 +130,7 @@
         // --- GAME STATE ---
         const params = new URLSearchParams(window.location.search);
         const matchId = params.get('match') || 'test_match';
-        const wager = parseInt(params.get('wager')) || 100;
+        const wager = parseInt(params.get('wager')) || 00;
         const hostId = params.get('host');
         const guestId = params.get('guest');
         
@@ -142,7 +142,7 @@
         let locked = false;
 
         // Board Variables
-        const baseEmojis = ['🍎','🍌','🍉','🍇','🍓','🥑','🥕','🌽','🍕','🍔','🍟','🍩','🍦','☕️','🚀'];
+        const baseEmojis = ['🍎','🍌','🍇','🍓','🥕','🌽','🍕','🍔','🍟','🍩','🍦','☕️','🚀','🍠','🍆'];
         let board = [];
         let flippedIndexes = [];
         let matchedIndexes = [];

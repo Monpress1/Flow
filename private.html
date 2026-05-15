@@ -1,552 +1,138 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flow | Private Match</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body { background: #020617; color: white; font-family: 'Inter', sans-serif; overflow-x: hidden; padding-bottom: 100px; min-height: 100vh; }
-        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; }
-        .bet-btn.selected { background: #3b82f6; border-color: #60a5fa; color: white; transform: scale(1.05); transition: all 0.2s; }
-        
-        /* Chat Animations */
-        #chat-panel { transition: transform 0.3s ease-in-out, opacity 0.3s ease; }
-        .chat-open { transform: translateY(0); opacity: 1; pointer-events: auto; }
-        .chat-closed { transform: translateY(120%); opacity: 0; pointer-events: none; }
-        
-        /* Custom Scrollbar for chat */
-        #chat-messages::-webkit-scrollbar { width: 4px; }
-        #chat-messages::-webkit-scrollbar-track { background: transparent; }
-        #chat-messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Coming Soon</title>
+
+<style>
+    body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: radial-gradient(circle at top, #0f172a, #020617);
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+        color: white;
+    }
+
+    /* glowing animated background blobs */
+    .blob {
+        position: absolute;
+        width: 300px;
+        height: 300px;
+        background: rgba(59,130,246,0.3);
+        filter: blur(80px);
+        border-radius: 50%;
+        animation: float 6s ease-in-out infinite;
+    }
+
+    .blob.one { top: 10%; left: 15%; }
+    .blob.two { bottom: 10%; right: 15%; background: rgba(168,85,247,0.25); }
+
+    @keyframes float {
+        0%,100% { transform: translateY(0px); }
+        50% { transform: translateY(40px); }
+    }
+
+    /* center container */
+    .scene {
+        perspective: 1000px;
+        z-index: 2;
+        text-align: center;
+    }
+
+    /* 3D text */
+    .tilt-text {
+        font-size: 60px;
+        font-weight: 900;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, #3b82f6, #a855f7, #22c55e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+
+        transform-style: preserve-3d;
+        transition: transform 0.1s ease-out;
+        text-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+
+    .sub {
+        margin-top: 10px;
+        font-size: 12px;
+        letter-spacing: 3px;
+        color: rgba(255,255,255,0.6);
+    }
+
+    /* glow ring */
+    .ring {
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        border: 2px solid rgba(59,130,246,0.3);
+        border-radius: 50%;
+        animation: pulse 3s infinite ease-in-out;
+        z-index: 1;
+    }
+
+    @keyframes pulse {
+        0%,100% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.2); opacity: 0.2; }
+    }
+</style>
 </head>
-<body class="max-w-md mx-auto relative">
 
-    <div id="countdown-overlay" class="fixed inset-0 bg-[#020617]/95 backdrop-blur-xl z-[9999] hidden flex-col items-center justify-center">
-        <h2 class="text-blue-500 font-bold uppercase tracking-widest text-sm mb-4">Starting Game In</h2>
-        <div id="countdown-number" class="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(59,130,246,0.5)]">10</div>
-        <p class="text-slate-400 text-xs mt-6"><i class="fa-solid fa-coins text-yellow-400 mr-1"></i> Wager deducted successfully.</p>
-    </div>
+<body>
 
-    <div id="view-create" class="flex flex-col h-screen justify-center px-6">
-        <button onclick="window.location.href='index.html'" class="absolute top-6 left-6 w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/5">
-            <i class="fa-solid fa-chevron-left"></i>
-        </button>
-        <div class="text-center mb-8">
-            <h1 class="font-black text-3xl tracking-tighter uppercase text-blue-400">Private Room</h1>
-            <p class="text-xs text-slate-500 font-bold tracking-widest uppercase mt-2">Play exclusively with friends</p>
-        </div>
-        <button onclick="createRoom()" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-black uppercase tracking-widest text-white shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
-            Generate Invite Link
-        </button>
-    </div>
+<div class="blob one"></div>
+<div class="blob two"></div>
+<div class="ring"></div>
 
-    <div id="view-room" class="hidden flex-col min-h-screen">
-        <header class="p-6 text-center pt-8 relative">
-            <button onclick="leaveRoom()" class="absolute top-8 left-6 w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-white/5 text-xs">
-                <i class="fa-solid fa-xmark text-red-400"></i>
-            </button>
-            <h1 class="font-black text-xl tracking-tighter uppercase text-blue-400">Match Setup</h1>
-            
-            <div id="invite-section" class="mt-4 glass-card p-3 flex items-center gap-2 border-blue-500/30 bg-blue-900/10 hidden">
-                <input type="text" id="invite-link" readonly class="bg-transparent text-[10px] text-blue-300 w-full outline-none font-mono truncate" value="">
-                <button onclick="copyInvite()" class="bg-blue-600/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600/40 active:scale-95 transition">
-                    COPY
-                </button>
-            </div>
-        </header>
+<div class="scene">
+    <div id="text" class="tilt-text">COMING SOON</div>
+    <div class="sub">Flow</div>
+</div>
 
-        <main class="flex-1 px-6 space-y-4">
-            
-            <div class="glass-card p-4">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Game Mode</label>
-                <select id="game-selector" onchange="changeGame()" disabled class="w-full bg-slate-800 text-white font-bold text-sm py-3 px-4 rounded-xl outline-none border border-slate-700 appearance-none">
-                    <option value="tap">Tap Tap</option>
-                    <option value="race">Race</option>
-                    <option value="tower">Tower</option>
-                    <option value="coinflip">Coinflip</option>
-                    <option value="dice">Dice</option>
-                    <option value="mines">Mines</option>
-                </select>
-                <p id="game-status-text" class="text-[9px] text-slate-500 font-bold mt-2 text-right hidden">Waiting for host to select...</p>
-            </div>
+<script>
+const text = document.getElementById("text");
 
-            <div class="flex justify-between items-center glass-card p-6 relative overflow-hidden">
-                <div class="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent"></div>
-                
-                <div class="text-center z-10 w-20">
-                    <img id="p1-avatar" src="" class="w-14 h-14 rounded-full border-2 border-blue-500 object-cover bg-slate-800 mx-auto">
-                    <p class="text-[10px] font-bold mt-2 truncate">You</p>
-                    <p id="p1-status" class="text-[9px] text-slate-400 uppercase font-bold">Selecting...</p>
-                </div>
-                
-                <div class="text-xl font-black text-slate-700 italic z-10">VS</div>
-                
-                <div class="text-center z-10 w-20">
-                    <div id="p2-loading" class="w-14 h-14 rounded-full bg-slate-800 animate-pulse mx-auto flex items-center justify-center border-2 border-slate-700">
-                        <i class="fa-solid fa-user-ninja text-slate-600"></i>
-                    </div>
-                    <img id="p2-avatar" src="" class="w-14 h-14 rounded-full border-2 border-red-500 object-cover bg-slate-800 mx-auto hidden">
-                    <p id="p2-name" class="text-[10px] font-bold mt-2 text-slate-500 truncate">Waiting...</p>
-                    <p id="p2-status" class="text-[9px] text-slate-400 uppercase font-bold"></p>
-                </div>
-            </div>
+// fallback mouse control (desktop)
+let mouseX = 0;
+let mouseY = 0;
 
-            <div class="glass-card p-5 space-y-4">
-                <div class="flex justify-between items-center">
-                    <span class="text-xs font-bold text-slate-400 uppercase">Your Balance</span>
-                    <span class="text-xs font-bold text-yellow-500"><i class="fa-solid fa-coins mr-1"></i> <span id="wager-balance">0</span></span>
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    <button onclick="selectWager(100)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">100</button>
-                    <button onclick="selectWager(500)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">500</button>
-                    <button onclick="selectWager(1000)" class="bet-btn py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-black">1K</button>
-                </div>
-                <button id="lock-btn" onclick="toggleLock()" class="w-full bg-slate-800 py-4 rounded-xl font-bold border border-slate-700 active:scale-95 transition">
-                    Lock In Wager
-                </button>
-            </div>
-            <div id="status-msg" class="text-center text-xs font-bold text-orange-400">Waiting for opponent to join...</div>
-        </main>
+document.addEventListener("mousemove", (e) => {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 30;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * 30;
+});
 
-        <div class="p-6 pb-24">
-            <button id="start-game-btn" onclick="startGame()" class="w-full bg-gradient-to-r from-green-500 to-emerald-400 py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg shadow-green-900/20 active:scale-95 transition-all opacity-50 pointer-events-none">
-                Awaiting Lock
-            </button>
-        </div>
-    </div>
+// phone tilt support
+window.addEventListener("deviceorientation", (e) => {
+    let beta = e.beta || 0;   // front/back tilt
+    let gamma = e.gamma || 0; // left/right tilt
 
-    <div id="chat-container" class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 hidden">
-        <button onclick="toggleChat()" class="absolute -top-12 right-6 bg-slate-800 border border-slate-600 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition z-50">
-            <i id="chat-icon" class="fa-solid fa-message"></i>
-            <span id="chat-badge" class="absolute -top-1 -right-1 bg-red-500 w-3 h-3 rounded-full border-2 border-slate-800 hidden"></span>
-        </button>
+    text.style.transform = `
+        rotateX(${-beta / 2}deg)
+        rotateY(${gamma / 2}deg)
+        scale(1.05)
+    `;
+});
 
-        <div id="chat-panel" class="bg-[#0f172a] border-t border-slate-700 h-[40vh] w-full rounded-t-3xl flex flex-col chat-closed shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-            <div class="p-3 border-b border-slate-800 flex justify-between items-center">
-                <span class="text-xs font-bold uppercase tracking-widest text-slate-400 pl-2">Room Chat</span>
-                <button onclick="toggleChat()" class="text-slate-500 p-2"><i class="fa-solid fa-chevron-down"></i></button>
-            </div>
-            
-            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
-                <div class="text-center text-[10px] text-slate-500 uppercase font-bold my-2">Chat connected</div>
-            </div>
+// smooth animation loop (desktop fallback)
+function animate() {
+    requestAnimationFrame(animate);
 
-            <div class="p-3 border-t border-slate-800 bg-slate-900/50 flex gap-2">
-                <input type="text" id="chat-input" onkeypress="if(event.key === 'Enter') sendChatMessage()" placeholder="Type a message..." class="flex-1 bg-slate-800 rounded-lg px-3 py-2 text-xs outline-none border border-slate-700 text-white">
-                <button onclick="sendChatMessage()" class="bg-blue-600 text-white px-4 rounded-lg flex items-center justify-center"><i class="fa-solid fa-paper-plane text-xs"></i></button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Supabase configuration
-        const SB_URL = 'https://ueuhuyzuacvwqpfszrzy.supabase.co';
-        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVldWh1eXp1YWN2d3FwZnN6cnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjQzOTksImV4cCI6MjA5MDQwMDM5OX0.DCAPnXLo7sM576-KC4HzXT09uc6nn9u00gT1RYCIxUs';
-        const flowClient = window.supabase.createClient(SB_URL, SB_KEY);
-
-        // Core variables
-        let currentUser = null;
-        let matchChannel = null;
-        let activeMatchId = null;
-        let myRole = null;
-        let oppId = null;
-        
-        // Game state
-        let currentGame = "tap";
-        let myWager = 0;
-        let isLocked = false;
-        let oppWager = 0;
-        let oppLocked = false;
-        let currentBalance = 0;
-
-        // Chat state
-        let isChatOpen = false;
-
-        async function initPage() {
-            const { data: { session } } = await flowClient.auth.getSession();
-            if (!session) return window.location.replace('auth.html');
-            currentUser = session.user;
-
-            const urlParams = new URLSearchParams(window.location.search);
-            activeMatchId = urlParams.get('match');
-            myRole = urlParams.get('role');
-
-            if (activeMatchId && myRole) {
-                // We are entering a room (either host refreshing, or guest joining)
-                joinRoom(activeMatchId, myRole);
-            } else {
-                // Show "Create Match" screen
-                document.getElementById('view-create').classList.remove('hidden');
-            }
-        }
-
-        // --- ROOM MANAGEMENT ---
-
-        function createRoom() {
-            const newMatchId = 'priv_' + Math.random().toString(36).substr(2, 9);
-            // Redirect slightly to lock in URL parameters so reloads work cleanly
-            window.location.replace(`private.html?match=${newMatchId}&role=host`);
-        }
-
-        async function joinRoom(matchId, role) {
-    // 1. UI Transitions
-    document.getElementById('view-create').classList.add('hidden');
-    document.getElementById('view-room').classList.remove('hidden');
-    document.getElementById('chat-container').classList.remove('hidden');
-
-    // 2. Fetch Balance & Set Profile (Force Number casting)
-    const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
-    currentBalance = Number(data?.coins || 0);
-    document.getElementById('wager-balance').innerText = currentBalance.toLocaleString();
-    document.getElementById('p1-avatar').src = currentUser.user_metadata.avatar_url || '';
-
-    // 3. Role-Based UI Config
-    if (role === 'host') {
-        document.getElementById('invite-section').classList.remove('hidden');
-        document.getElementById('game-selector').disabled = false;
-        const link = `${window.location.origin}${window.location.pathname}?match=${matchId}&role=guest`;
-        document.getElementById('invite-link').value = link;
-    } else {
-        document.getElementById('game-selector').disabled = true;
-        document.getElementById('game-selector').classList.add('opacity-50');
-        document.getElementById('game-status-text').classList.remove('hidden');
-    }
-
-    // 4. Supabase Channel Setup
-    matchChannel = flowClient.channel(matchId);
-    matchChannel
-        .on('broadcast', { event: 'guest_ping' }, ({ payload }) => {
-            // Host receives this and responds immediately with the game state
-            handleGuestPing(payload);
-        })
-        .on('broadcast', { event: 'host_sync' }, ({ payload }) => {
-            // Guest receives this and clears the "Waiting for host" text
-            handleHostSync(payload);
-        })
-        .on('broadcast', { event: 'wager_update' }, ({ payload }) => handleWagerUpdate(payload))
-        .on('broadcast', { event: 'game_changed' }, ({ payload }) => handleGameChanged(payload))
-        .on('broadcast', { event: 'chat' }, ({ payload }) => receiveChatMessage(payload))
-        .on('broadcast', { event: 'start_countdown' }, () => executeCountdown())
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                // If Guest joins, they "shout" to the host to get the current game settings
-                if (role === 'guest') {
-                    syncWagerState(); 
-                } else {
-                    // If Host refreshes, they announce they are ready
-                    syncWagerState();
-                }
-            }
-        });
-}
-
-
-        function copyInvite() {
-            const input = document.getElementById('invite-link');
-            input.select();
-            document.execCommand('copy');
-            const btn = input.nextElementSibling;
-            btn.innerText = "COPIED!";
-            setTimeout(() => btn.innerText = "COPY", 2000);
-        }
-
-        function leaveRoom() {
-            window.location.replace('private.html');
-        }
-
-        // --- SYNC EVENTS ---
-
-        function handleGuestPing(payload) {
-            if (myRole !== 'host') return;
-            
-            oppId = payload.userId;
-            updateOpponentUI(payload);
-            document.getElementById('status-msg').innerText = "Opponent joined! Set wager.";
-
-            // Host sends their current state back so guest is fully synced
-            matchChannel.send({
-                type: 'broadcast',
-                event: 'host_sync',
-                payload: {
-                    userId: currentUser.id,
-                    username: currentUser.user_metadata.username,
-                    avatar: currentUser.user_metadata.avatar_url,
-                    wager: myWager,
-                    locked: isLocked,
-                    game: currentGame
-                }
-            });
-            evaluateMatchState();
-        }
-
-        function handleHostSync(payload) {
-            if (myRole !== 'guest') return;
-
-            oppId = payload.userId;
-            currentGame = payload.game;
-            document.getElementById('game-selector').value = currentGame;
-            document.getElementById('status-msg').innerText = "Host connected. Set wager.";
-            
-            updateOpponentUI(payload);
-            evaluateMatchState();
-        }
-
-        function updateOpponentUI(payload) {
-            oppWager = payload.wager;
-            oppLocked = payload.locked;
-            
-            const p2Img = document.getElementById('p2-avatar');
-            p2Img.src = payload.avatar || '';
-            p2Img.classList.remove('hidden');
-            document.getElementById('p2-loading').classList.add('hidden');
-            document.getElementById('p2-name').innerText = payload.username || 'Opponent';
-            
-            const oppStatus = document.getElementById('p2-status');
-            oppStatus.innerText = oppLocked ? `LOCKED: ${oppWager}` : `Selecting...`;
-            oppStatus.className = oppLocked ? "text-[10px] text-green-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
-        }
-
-        function handleWagerUpdate(payload) {
-            if (payload.userId === currentUser.id) return;
-            updateOpponentUI(payload);
-            evaluateMatchState();
-        }
-
-        function handleGameChanged(payload) {
-            if (myRole === 'guest') {
-                currentGame = payload.game;
-                document.getElementById('game-selector').value = currentGame;
-            }
-        }
-
-        // --- WAGER & GAME MECHANICS ---
-
-        function changeGame() {
-            if (myRole !== 'host') return;
-            currentGame = document.getElementById('game-selector').value;
-            matchChannel.send({
-                type: 'broadcast',
-                event: 'game_changed',
-                payload: { game: currentGame }
-            });
-        }
-
-        function selectWager(amt) {
-            if (isLocked) return;
-            myWager = amt;
-            document.querySelectorAll('.bet-btn').forEach(b => {
-                b.classList.remove('selected');
-                if(parseInt(b.innerText.replace('K','000')) === amt) b.classList.add('selected');
-            });
-            syncWagerState();
-        }
-
-        function toggleLock() {
-    // Ensure we are comparing numbers, not strings
-    const wager = Number(myWager);
-    const balance = Number(currentBalance);
-
-    if (wager <= 0) {
-        alert("Please select a wager amount first.");
-        return;
-    }
-    
-    if (!isLocked && wager > balance) {
-        const msg = document.getElementById('status-msg');
-        msg.innerText = "INSUFFICIENT FUNDS!";
-        msg.className = "text-center text-xs font-black text-red-500 animate-pulse";
-        return; 
-    }
-
-    isLocked = !isLocked;
-    
-    const btn = document.getElementById('lock-btn');
-    const status = document.getElementById('p1-status');
-    
-    // UI Feedback
-    btn.innerText = isLocked ? "Unlock Wager" : "Lock In Wager";
-    btn.classList.toggle('bg-slate-800', !isLocked);
-    btn.classList.toggle('bg-blue-600', isLocked);
-    
-    status.innerText = isLocked ? `LOCKED: ${wager}` : `Selecting...`;
-    status.className = isLocked ? "text-[10px] text-blue-400 font-bold uppercase" : "text-[9px] text-slate-400 uppercase";
-
-    syncWagerState();
-    evaluateMatchState();
-}
-
-function syncWagerState() {
-    if (!matchChannel) return;
-    
-    // We send EVERY piece of info in every sync so players can't get out of sync
-    matchChannel.send({
-        type: 'broadcast',
-        event: myRole === 'host' ? 'host_sync' : 'guest_ping',
-        payload: {
-            userId: currentUser.id,
-            username: currentUser.user_metadata.username || 'Player',
-            wager: Number(myWager),
-            locked: isLocked,
-            avatar: currentUser.user_metadata.avatar_url,
-            game: currentGame // Guest needs to see this
-        }
-    });
-}
-
-
-        
-        function evaluateMatchState() {
-    const startBtn = document.getElementById('start-game-btn');
-    const msg = document.getElementById('status-msg');
-
-    if (!oppId) {
-        msg.innerText = "Waiting for opponent...";
-        return;
-    }
-
-    if (isLocked && oppLocked) {
-        if (Number(myWager) === Number(oppWager)) {
-            msg.innerText = "Match Confirmed!";
-            msg.className = "text-center text-xs font-bold text-green-400";
-            
-            if (myRole === 'host') {
-                startBtn.innerText = "START GAME";
-                startBtn.classList.remove('opacity-50', 'pointer-events-none');
-            } else {
-                startBtn.innerText = "Awaiting Host Start";
-                startBtn.classList.add('opacity-50', 'pointer-events-none');
-            }
-        } else {
-            msg.innerText = "Wagers must match!";
-            msg.className = "text-center text-xs font-bold text-red-400";
-            startBtn.classList.add('opacity-50', 'pointer-events-none');
-        }
-    } else {
-        msg.innerText = isLocked ? "Waiting for opponent to lock..." : "Lock your wager to continue";
-        msg.className = "text-center text-xs font-bold text-orange-400";
-        startBtn.classList.add('opacity-50', 'pointer-events-none');
-        startBtn.innerText = "Awaiting Locks";
+    if (!("DeviceOrientationEvent" in window)) {
+        text.style.transform = `
+            rotateX(${-mouseY}deg)
+            rotateY(${mouseX}deg)
+            scale(1.05)
+        `;
     }
 }
-        function startGame() {
-            matchChannel.send({ type: 'broadcast', event: 'start_countdown' });
-            executeCountdown();
-        }
+animate();
+</script>
 
-        async function deductCoinBalance() {
-            try {
-                const { data } = await flowClient.from('profiles').select('coins').eq('id', currentUser.id).single();
-                const newBalance = (data ? data.coins : 0) - myWager;
-                await flowClient.from('profiles').update({ coins: newBalance }).eq('id', currentUser.id);
-            } catch (err) { console.error("Deduction error", err); }
-        }
-
-        async function executeCountdown() {
-            await deductCoinBalance();
-
-            const overlay = document.getElementById('countdown-overlay');
-            overlay.classList.remove('hidden');
-            overlay.classList.add('flex');
-            
-            let count = 5; // Faster countdown for private
-            document.getElementById('countdown-number').innerText = count;
-            
-            const timer = setInterval(() => {
-                count--;
-                document.getElementById('countdown-number').innerText = count;
-                
-                if(count <= 0) {
-                    clearInterval(timer);
-                    const hostId = myRole === 'host' ? currentUser.id : oppId;
-                    const guestId = myRole === 'guest' ? currentUser.id : oppId;
-                    
-                    const targetPage = `${currentGame}.html`;
-                    
-                    // Added returnLink parameter so the game knows where to send them back to play again
-                    const returnLink = encodeURIComponent(`private.html?match=${activeMatchId}&role=${myRole}`);
-                    window.location.replace(`${targetPage}?match=${activeMatchId}&wager=${myWager}&host=${hostId}&guest=${guestId}&return=${returnLink}`);
-                }
-            }, 1000);
-        }
-
-        // --- COLLAPSIBLE CHAT ---
-
-        function toggleChat() {
-            const panel = document.getElementById('chat-panel');
-            const icon = document.getElementById('chat-icon');
-            const badge = document.getElementById('chat-badge');
-            
-            isChatOpen = !isChatOpen;
-            if (isChatOpen) {
-                panel.classList.remove('chat-closed');
-                panel.classList.add('chat-open');
-                icon.className = "fa-solid fa-chevron-down";
-                badge.classList.add('hidden'); // Clear unread dot
-            } else {
-                panel.classList.remove('chat-open');
-                panel.classList.add('chat-closed');
-                icon.className = "fa-solid fa-message";
-            }
-        }
-
-        function sendChatMessage() {
-            const input = document.getElementById('chat-input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            const msgData = {
-                sender: currentUser.user_metadata.username || 'Me',
-                text: text,
-                isMe: true
-            };
-
-            appendMessageToUI(msgData);
-            input.value = '';
-
-            matchChannel.send({
-                type: 'broadcast',
-                event: 'chat',
-                payload: {
-                    sender: currentUser.user_metadata.username || 'Opponent',
-                    text: text
-                }
-            });
-        }
-
-        function receiveChatMessage(payload) {
-            appendMessageToUI({
-                sender: payload.sender,
-                text: payload.text,
-                isMe: false
-            });
-
-            // Show unread badge if closed
-            if (!isChatOpen) {
-                document.getElementById('chat-badge').classList.remove('hidden');
-            }
-        }
-
-        function appendMessageToUI(data) {
-            const container = document.getElementById('chat-messages');
-            const div = document.createElement('div');
-            
-            if (data.isMe) {
-                div.className = "self-end max-w-[80%] bg-blue-600 text-white p-2 rounded-xl rounded-tr-sm text-xs";
-                div.innerHTML = `<p>${data.text}</p>`;
-            } else {
-                div.className = "self-start max-w-[80%] bg-slate-800 border border-slate-700 text-slate-200 p-2 rounded-xl rounded-tl-sm text-xs";
-                div.innerHTML = `<span class="text-[9px] text-blue-400 font-bold block mb-1">${data.sender}</span><p>${data.text}</p>`;
-            }
-            
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight; // Auto-scroll to bottom
-        }
-
-        document.addEventListener('DOMContentLoaded', initPage);
-    </script>
 </body>
 </html>
