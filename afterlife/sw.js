@@ -1,0 +1,4 @@
+const C='afterlife-v3',T='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+self.addEventListener('install',e=>{e.waitUntil((async()=>{const c=await caches.open(C);await c.addAll(['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png']);for(const u of ['./three.min.js',T,'./fa.min.js','https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js']){try{await c.add(u)}catch(_){}}self.skipWaiting()})())});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!=C).map(x=>caches.delete(x)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{if(e.request.method!='GET')return;e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(n=>{if(n.ok||n.type=='opaque'){const cp=n.clone();caches.open(C).then(c=>c.put(e.request,cp))}return n}).catch(()=>caches.match('./index.html'))))});
